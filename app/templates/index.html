@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <div class="service-options">
+    <div class="service-card" id="migration-card">
+      <div class="service-icon">
+        <i class="fas fa-exchange-alt"></i>
+      </div>
+      <h2>Migration Service</h2>
+      <p>Migrate your virtual machines between different platforms seamlessly</p>
+      <div class="service-content" id="migration-content">
+        <h3>Platform Migration</h3>
+        <form action="{{ url_for('main.select_platforms') }}" method="post">
+          <div class="form-group">
+            <label>Source Platform</label>
+            <select name="source" class="select-platform">
+              {% for p in platforms %}
+                <option value="{{ p }}">{{ p|upper }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Destination Platform</label>
+            <select name="destination" class="select-platform">
+              {% for p in platforms %}
+                <option value="{{ p }}">{{ p|upper }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Start Migration</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="service-card" id="lab-card">
+      <div class="service-icon">
+        <i class="fas fa-flask"></i>
+      </div>
+      <h2>Lab as a Service</h2>
+      <p>Set up and manage your lab environment with just a few clicks</p>
+      <div class="service-content">
+        <h3>Coming Soon</h3>
+        <p>Our Lab as a Service feature is currently under development. Stay tuned for updates!</p>
+      </div>
+    </div>
+  </div>
+{% endblock %}

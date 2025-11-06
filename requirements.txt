@@ -1,0 +1,6 @@
+Flask>=2.0
+pyvmomi>=8.0.0
+
+# Optional helper libs you may add later:
+# requests
+# celery (for background jobs)

@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <div class="page-card">
+    <h2>VMs on {{ host }}</h2>
+    <form action="{{ url_for('main.start_migration') }}" method="post">
+      <table>
+        <thead>
+          <tr>
+            <th><input id="select-all" type="checkbox"></th>
+            <th>Name</th>
+            <th>Instance UUID</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for vm in vms %}
+            <tr>
+              <td><input class="vm-checkbox" name="selected_vms" type="checkbox" value="{{ vm.instance_uuid }}"></td>
+              <td>{{ vm.name }}</td>
+              <td>{{ vm.instance_uuid }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Start Migration</button>
+        <a href="{{ url_for('main.index') }}" class="link-btn">Back</a>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      const selectAll = document.getElementById('select-all');
+      if (!selectAll) return;
+      selectAll.addEventListener('change', function(e){
+        const checked = e.target.checked;
+        document.querySelectorAll('.vm-checkbox').forEach(cb => cb.checked = checked);
+      });
+    });
+  </script>
+{% endblock %}

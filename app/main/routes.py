@@ -1,0 +1,110 @@
+"""
+Routes for the main blueprint.
+
+This blueprint implements a simple multi-step flow:
+1) Select source and destination platforms
+2) Enter source connection details (for ESXi we use pyvmomi)
+3) Connect and list VMs -> select VMs
+4) Start migration (stubbed)
+
+Each route contains comments explaining where to extend functionality.
+"""
+from flask import render_template, request, redirect, url_for, flash, session
+from . import bp
+
+from ..vmware.client import list_vms_on_esxi, VmwareConnectionError
+
+
+@bp.route("/")
+def index():
+    """Landing page - choose source and destination platforms.
+
+    For simplicity we show a couple of options. In future you can load these
+    from a DB or config and include additional platforms.
+    """
+    platforms = ["esxi", "proxmox", "kvm", "other"]
+    return render_template("index.html", platforms=platforms)
+
+
+@bp.route("/select-platforms", methods=["POST"])
+def select_platforms():
+    """Save platform choices in session and proceed to source details form."""
+    source = request.form.get("source")
+    destination = request.form.get("destination")
+    if not source or not destination:
+        flash("Please choose both source and destination platforms.")
+        return redirect(url_for("main.index"))
+
+    session["platforms"] = {"source": source, "destination": destination}
+    return redirect(url_for("main.source_details"))
+
+
+@bp.route("/source-details", methods=["GET"])
+def source_details():
+    """Show a source connection form depending on the chosen platform.
+
+    Currently we support ESXi; for other platforms you'd display different fields.
+    """
+    platforms = session.get("platforms")
+    if not platforms:
+        return redirect(url_for("main.index"))
+    return render_template("source_details.html", source=platforms["source"]) 
+
+
+@bp.route("/connect-source", methods=["POST"])
+def connect_source():
+    """Attempt to connect to the source and list VMs.
+
+    Expects host, username, password in the POST form for ESXi.
+    Uses `list_vms_on_esxi` which wraps pyvmomi calls.
+    """
+    platforms = session.get("platforms")
+    if not platforms:
+        return redirect(url_for("main.index"))
+
+    src = platforms["source"]
+    if src != "esxi":
+        flash("Only ESXi source is implemented in this scaffold.")
+        return redirect(url_for("main.source_details"))
+
+    host = request.form.get("host")
+    username = request.form.get("username")
+    password = request.form.get("password")
+
+    if not host or not username or not password:
+        flash("Provide host, username, and password to connect.")
+        return redirect(url_for("main.source_details"))
+
+    # Try to list VMs using pyvmomi wrapper
+    try:
+        vm_list = list_vms_on_esxi(host, username, password)
+    except VmwareConnectionError as e:
+        flash(f"Connection failed: {e}")
+        return redirect(url_for("main.source_details"))
+
+    # Store a small representation in session for the selection step.
+    # For production, use a DB or cache store (Redis) and do not store secrets in session.
+    session["last_vm_list"] = vm_list
+    return render_template("vm_list.html", vms=vm_list, host=host)
+
+
+@bp.route("/start-migration", methods=["POST"])
+def start_migration():
+    """Receive selected VMs and destination details then start migration.
+
+    This scaffold only echoes the selection. Real migration should be
+    performed in the background (Celery/RQ/Task queue) and tracked.
+    """
+    selected = request.form.getlist("selected_vms")
+    if not selected:
+        flash("No VMs selected for migration.")
+        return redirect(url_for("main.index"))
+
+    # In this scaffold, we simply show the selection and where to extend.
+    # You would enqueue a job here that performs the migration steps:
+    #  - Export disk images (OVF/OVA or disk copy)
+    #  - Transfer to destination
+    #  - Create VM on destination using its API
+    #  - Verify serials / UUIDs if needed
+
+    return render_template("migration_started.html", vms=selected)
