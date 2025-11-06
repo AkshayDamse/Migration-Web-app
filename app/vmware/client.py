@@ -14,10 +14,11 @@ from typing import List, Dict
 
 try:
     # pyvmomi imports
-    from pyVim.connect import SmartConnectNoSSL, Disconnect
+    from pyVim.connect import SmartConnect, Disconnect
     from pyVmomi import vim
+    import ssl
 except Exception:  # pragma: no cover - import may fail if not installed
-    SmartConnectNoSSL = None
+    SmartConnect = None
     Disconnect = None
     vim = None
 
@@ -34,13 +35,16 @@ def list_vms_on_esxi(host: str, username: str, password: str, port: int = 443) -
     Raises:
         VmwareConnectionError on failures
     """
-    if SmartConnectNoSSL is None:
+    if SmartConnect is None:
         raise VmwareConnectionError("pyvmomi is not installed. Install pyvmomi to use ESXi features.")
 
     si = None
     try:
-        # SmartConnectNoSSL is convenient for dev/test to skip cert validation
-        si = SmartConnectNoSSL(host=host, user=username, pwd=password, port=port)
+        # Create SSL context that doesn't verify certificates for dev/test
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.verify_mode = ssl.CERT_NONE
+        
+        si = SmartConnect(host=host, user=username, pwd=password, port=port, sslContext=context)
     except Exception as e:
         raise VmwareConnectionError(f"Unable to connect to ESXi host {host}: {e}")
 
