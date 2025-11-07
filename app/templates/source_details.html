@@ -47,15 +47,56 @@
   </div>
 
   <script>
-    document.getElementById('connect-form').addEventListener('submit', function(e) {
+    document.getElementById('connect-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const form = e.target;
       const button = document.getElementById('connect-button');
       const spinner = button.querySelector('.fa-spinner');
       const text = button.querySelector('.button-text');
-      
+
       // Show spinner, disable button
       spinner.style.display = 'inline-block';
       text.textContent = 'Connecting...';
       button.disabled = true;
+
+      // Prepare form data
+      const data = new FormData(form);
+
+      try {
+        const resp = await fetch(form.action, {
+          method: 'POST',
+          body: data,
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        const json = await resp.json();
+
+        if (!resp.ok) {
+          // Show error message using a temporary alert and reset button
+          alert(json.message || 'Connection failed');
+          spinner.style.display = 'none';
+          text.textContent = 'Connect and list VMs';
+          button.disabled = false;
+          return;
+        }
+
+        // Success: show green state on button and navigate to vm list
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-success');
+        text.textContent = 'Authenticated';
+        spinner.style.display = 'none';
+
+        // brief delay so user sees the green state
+        setTimeout(function(){
+          window.location.href = json.redirect_url;
+        }, 700);
+
+      } catch (err) {
+        alert('Connection failed: ' + err.message);
+        spinner.style.display = 'none';
+        text.textContent = 'Connect and list VMs';
+        button.disabled = false;
+      }
     });
   </script>
 {% endblock %}

@@ -9,7 +9,7 @@ This blueprint implements a simple multi-step flow:
 
 Each route contains comments explaining where to extend functionality.
 """
-from flask import render_template, request, redirect, url_for, flash, session
+from flask import render_template, request, redirect, url_for, flash, session, jsonify
 from . import bp
 
 from ..vmware.client import list_vms_on_esxi, verify_credentials, VmwareConnectionError
@@ -80,16 +80,28 @@ def connect_source():
         # First verify the credentials
         success, message = verify_credentials(host, username, password)
         if not success:
+            # If AJAX request, return JSON error
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify(success=False, message=message), 400
             flash(message, "error")
             return redirect(url_for("main.source_details"))
-            
-        # Store successful authentication in session
-        session['authenticated'] = True
-        flash(message, "success")
-            
+
         # If credentials are valid, try to list VMs
         vm_list = list_vms_on_esxi(host, username, password)
+
+        # If AJAX request, store vm_list in session and return JSON with redirect
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            session['last_vm_list'] = vm_list
+            session['last_vm_host'] = host
+            session['authenticated'] = True
+            return jsonify(success=True, message=message, redirect_url=url_for('main.vm_list_get'))
+
+        # Non-AJAX: store in session and render template
+        session['authenticated'] = True
+        flash(message, "success")
     except VmwareConnectionError as e:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify(success=False, message=str(e)), 400
         flash(str(e), "error")
         return redirect(url_for("main.source_details"))
 
@@ -97,6 +109,19 @@ def connect_source():
     # For production, use a DB or cache store (Redis) and do not store secrets in session.
     session["last_vm_list"] = vm_list
     return render_template("vm_list.html", vms=vm_list, host=host)
+
+
+@bp.route('/vm-list', methods=['GET'])
+def vm_list_get():
+    """Render VM list from session data (used after AJAX connect)."""
+    vms = session.get('last_vm_list')
+    host = session.get('last_vm_host')
+    if vms is None:
+        flash('No VM list found in session. Please connect first.', 'error')
+        return redirect(url_for('main.source_details'))
+
+    auth_flag = session.pop('authenticated', False)
+    return render_template('vm_list.html', vms=vms, host=host, authenticated=auth_flag)
 
 
 @bp.route("/start-migration", methods=["POST"])

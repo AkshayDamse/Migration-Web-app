@@ -3,6 +3,12 @@
 {% block content %}
   <div class="page-card">
     <h2>VMs on {{ host }}</h2>
+    {% if authenticated %}
+      <div class="alert alert-success">
+        <i class="fas fa-check-circle"></i>
+        Authenticated to {{ host }} — listing VMs below.
+      </div>
+    {% endif %}
     <form action="{{ url_for('main.start_migration') }}" method="post">
       <table>
         <thead>

@@ -86,24 +86,26 @@ def list_vms_on_esxi(host: str, username: str, password: str, port: int = 443) -
             ]
         raise VmwareConnectionError("pyvmomi is not installed. Install pyvmomi to use ESXi features.")
         
-    # First verify credentials
-    if not verify_credentials(host, username, password, port):
-        raise VmwareConnectionError("Invalid credentials or unable to connect to ESXi host")
+    # First verify credentials (verify_credentials returns (ok, message))
+    ok, msg = verify_credentials(host, username, password, port)
+    if not ok:
+        raise VmwareConnectionError(msg)
 
     si = None
     try:
-        # Create SSL context that doesn't verify certificates for dev/test
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.verify_mode = ssl.CERT_NONE
-        context.check_hostname = False
-        
-        si = SmartConnect(
-            host=host,
-            user=username,
-            pwd=password,
-            port=port,
-            sslContext=context
-        )
+        # Disable certificate verification globally for this connection
+        # by using an unverified default HTTPS context. This avoids the
+        # "Cannot set verify_mode to CERT_NONE when check_hostname is enabled"
+        # error that can occur when manipulating SSLContext attributes in the
+        # wrong order on some Python versions.
+        try:
+            ssl._create_default_https_context = ssl._create_unverified_context
+        except Exception:
+            # If this fails, continue and let SmartConnect raise a clear error
+            pass
+
+        # Call SmartConnect directly; pyvmomi will use the default context
+        si = SmartConnect(host=host, user=username, pwd=password, port=port)
     except Exception as e:
         raise VmwareConnectionError(f"Unable to connect to ESXi host {host}: {e}")
 
