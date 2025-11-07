@@ -11,6 +11,7 @@ For production use:
 - Add robust exception handling and retries
 """
 from typing import List, Dict
+import os
 
 try:
     # pyvmomi imports
@@ -27,6 +28,46 @@ class VmwareConnectionError(Exception):
     pass
 
 
+def verify_credentials(host: str, username: str, password: str, port: int = 443) -> tuple[bool, str]:
+    """Verify ESXi credentials without listing VMs.
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    if SmartConnect is None:
+        if os.getenv("VMWARE_BYPASS_PYVMOMI", "0") == "1":
+            return True, "Development mode: Authentication bypassed"
+        return False, "pyvmomi is not installed"
+        
+    si = None
+    try:
+        # Completely disable SSL verification
+        import ssl
+        ssl._create_default_https_context = ssl._create_unverified_context
+        
+        si = SmartConnect(
+            host=host,
+            user=username,
+            pwd=password,
+            port=port,
+            disableSslCertValidation=True  # Explicitly disable SSL validation
+        )
+        return True, "Authentication successful"
+    except Exception as e:
+        error_msg = str(e)
+        if "incorrect user name" in error_msg.lower() or "invalid credentials" in error_msg.lower():
+            return False, "Invalid username or password"
+        elif "connection refused" in error_msg.lower():
+            return False, f"Could not connect to host {host}. Please verify the hostname/IP and port."
+        else:
+            return False, f"Connection failed: {str(e)}"
+    finally:
+        if si:
+            try:
+                Disconnect(si)
+            except Exception:
+                pass
+
 def list_vms_on_esxi(host: str, username: str, password: str, port: int = 443) -> List[Dict]:
     """Connect to an ESXi host and list virtual machines.
 
@@ -35,16 +76,34 @@ def list_vms_on_esxi(host: str, username: str, password: str, port: int = 443) -
     Raises:
         VmwareConnectionError on failures
     """
+    bypass = os.getenv("VMWARE_BYPASS_PYVMOMI", "0") == "1"
+
     if SmartConnect is None:
+        if bypass:
+            return [
+                {"name": "(dev) sample-vm-1", "instance_uuid": "dev-uuid-1"},
+                {"name": "(dev) sample-vm-2", "instance_uuid": "dev-uuid-2"},
+            ]
         raise VmwareConnectionError("pyvmomi is not installed. Install pyvmomi to use ESXi features.")
+        
+    # First verify credentials
+    if not verify_credentials(host, username, password, port):
+        raise VmwareConnectionError("Invalid credentials or unable to connect to ESXi host")
 
     si = None
     try:
         # Create SSL context that doesn't verify certificates for dev/test
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.verify_mode = ssl.CERT_NONE
+        context.check_hostname = False
         
-        si = SmartConnect(host=host, user=username, pwd=password, port=port, sslContext=context)
+        si = SmartConnect(
+            host=host,
+            user=username,
+            pwd=password,
+            port=port,
+            sslContext=context
+        )
     except Exception as e:
         raise VmwareConnectionError(f"Unable to connect to ESXi host {host}: {e}")
 

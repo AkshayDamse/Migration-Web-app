@@ -12,7 +12,7 @@ Each route contains comments explaining where to extend functionality.
 from flask import render_template, request, redirect, url_for, flash, session
 from . import bp
 
-from ..vmware.client import list_vms_on_esxi, VmwareConnectionError
+from ..vmware.client import list_vms_on_esxi, verify_credentials, VmwareConnectionError
 
 
 @bp.route("/")
@@ -77,9 +77,20 @@ def connect_source():
 
     # Try to list VMs using pyvmomi wrapper
     try:
+        # First verify the credentials
+        success, message = verify_credentials(host, username, password)
+        if not success:
+            flash(message, "error")
+            return redirect(url_for("main.source_details"))
+            
+        # Store successful authentication in session
+        session['authenticated'] = True
+        flash(message, "success")
+            
+        # If credentials are valid, try to list VMs
         vm_list = list_vms_on_esxi(host, username, password)
     except VmwareConnectionError as e:
-        flash(f"Connection failed: {e}")
+        flash(str(e), "error")
         return redirect(url_for("main.source_details"))
 
     # Store a small representation in session for the selection step.

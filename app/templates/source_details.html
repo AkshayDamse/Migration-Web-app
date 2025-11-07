@@ -3,8 +3,23 @@
 {% block content %}
   <div class="page-card">
     <h2>Connect to source: {{ source|upper }}</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">
+            {% if category == 'success' %}
+              <i class="fas fa-check-circle"></i>
+            {% else %}
+              <i class="fas fa-exclamation-circle"></i>
+            {% endif %}
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    
     {% if source == 'esxi' %}
-      <form action="{{ url_for('main.connect_source') }}" method="post">
+      <form action="{{ url_for('main.connect_source') }}" method="post" id="connect-form">
         <div class="form-group">
           <label>Host (IP or hostname)</label>
           <input class="input-field" name="host" required>
@@ -18,7 +33,10 @@
           <input class="input-field" name="password" type="password" required>
         </div>
         <div class="form-actions">
-          <button type="submit" class="btn-primary">Connect and list VMs</button>
+          <button type="submit" class="btn-primary" id="connect-button">
+            <span class="button-text">Connect and list VMs</span>
+            <i class="fas fa-spinner fa-spin" style="display: none;"></i>
+          </button>
           <a href="{{ url_for('main.index') }}" class="link-btn">Cancel</a>
         </div>
       </form>
@@ -27,4 +45,17 @@
       <div class="form-actions"><a href="{{ url_for('main.index') }}" class="link-btn">Back</a></div>
     {% endif %}
   </div>
+
+  <script>
+    document.getElementById('connect-form').addEventListener('submit', function(e) {
+      const button = document.getElementById('connect-button');
+      const spinner = button.querySelector('.fa-spinner');
+      const text = button.querySelector('.button-text');
+      
+      // Show spinner, disable button
+      spinner.style.display = 'inline-block';
+      text.textContent = 'Connecting...';
+      button.disabled = true;
+    });
+  </script>
 {% endblock %}
