@@ -21,6 +21,13 @@ except ImportError:
     update_esxi_config = None
     update_selected_vms = None
 
+# Import Proxmox client
+try:
+    from ..proxmox.client import verify_proxmox_credentials, ProxmoxConnectionError
+except ImportError:
+    verify_proxmox_credentials = None
+    ProxmoxConnectionError = None
+
 
 @bp.route("/")
 def index():
@@ -198,3 +205,103 @@ def start_migration():
         print(f"[INFO] Selected VM serial numbers updated in script: {serial_numbers}")
     
     return render_template("migration_started.html", vms=selected_vms)
+
+
+@bp.route("/destination-details", methods=["GET"])
+def destination_details():
+    """Show destination connection form based on user's platform choice."""
+    platforms = session.get("platforms")
+    if not platforms:
+        return redirect(url_for("main.index"))
+    
+    destination = platforms["destination"]
+    return render_template("destination_details.html", destination=destination)
+
+
+@bp.route("/connect-destination", methods=["POST"])
+def connect_destination():
+    """Attempt to connect to the destination platform and verify credentials."""
+    platforms = session.get("platforms")
+    if not platforms:
+        return redirect(url_for("main.index"))
+
+    destination = platforms["destination"]
+    if destination != "proxmox":
+        flash("Only Proxmox destination is implemented.", "error")
+        return redirect(url_for("main.destination_details"))
+
+    host = request.form.get("host")
+    username = request.form.get("username")
+    password = request.form.get("password")
+    port = request.form.get("port", 8006)
+
+    if not host or not username or not password:
+        flash("Provide host, username, and password to connect.", "error")
+        return redirect(url_for("main.destination_details"))
+
+    try:
+        port = int(port)
+    except ValueError:
+        port = 8006
+
+    # Try to verify Proxmox credentials
+    try:
+        if not verify_proxmox_credentials:
+            flash("Proxmox client not available.", "error")
+            return redirect(url_for("main.destination_details"))
+
+        success, message = verify_proxmox_credentials(host, username, password, port)
+        
+        if not success:
+            # If AJAX request, return JSON error
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify(success=False, message=message), 400
+            flash(message, "error")
+            return redirect(url_for("main.destination_details"))
+
+        # ✓ AUTHENTICATION SUCCESSFUL - Store Proxmox credentials in session
+        session['destination_host'] = host
+        session['destination_user'] = username
+        session['destination_pass'] = password
+        session['destination_port'] = port
+        session['authenticated_destination'] = True
+
+        # If AJAX request, return JSON with redirect
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify(
+                success=True,
+                message=message,
+                redirect_url=url_for('main.migration_summary')
+            )
+
+        flash(message, "success")
+
+    except Exception as e:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify(success=False, message=str(e)), 400
+        flash(f"Connection failed: {str(e)}", "error")
+        return redirect(url_for("main.destination_details"))
+
+    return redirect(url_for("main.migration_summary"))
+
+
+@bp.route("/migration-summary", methods=["GET"])
+def migration_summary():
+    """Show migration summary with both source and destination details."""
+    # Check if we have all required information
+    source_vms = session.get('last_vm_list')
+    dest_host = session.get('destination_host')
+    
+    if not source_vms or not dest_host:
+        flash("Missing required information. Please start from the beginning.", "error")
+        return redirect(url_for("main.index"))
+
+    auth_flag = session.pop('authenticated_destination', False)
+    
+    return render_template(
+        'migration_summary.html',
+        source_vms=source_vms,
+        destination_host=dest_host,
+        authenticated=auth_flag
+    )
+

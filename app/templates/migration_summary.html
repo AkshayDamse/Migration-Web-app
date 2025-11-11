@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <div class="page-card">
+    <h2>Migration Summary</h2>
+    
+    {% if authenticated %}
+      <div class="alert alert-success">
+        <i class="fas fa-check-circle"></i>
+        Destination authenticated successfully!
+      </div>
+    {% endif %}
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 2rem 0;">
+      <!-- Source Details -->
+      <div>
+        <h3 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">
+          <i class="fas fa-upload"></i> Source (ESXi)
+        </h3>
+        <div style="margin-top: 1rem;">
+          <p><strong>VMs to Migrate:</strong></p>
+          <ul>
+            {% for vm in source_vms %}
+              <li>{{ vm.name }} (UUID: {{ vm.instance_uuid }})</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      
+      <!-- Destination Details -->
+      <div>
+        <h3 style="color: #16a34a; border-bottom: 2px solid #16a34a; padding-bottom: 0.5rem;">
+          <i class="fas fa-download"></i> Destination (Proxmox)
+        </h3>
+        <div style="margin-top: 1rem;">
+          <p><strong>Host:</strong> {{ destination_host }}</p>
+          <p style="color: #16a34a; font-weight: bold; margin-top: 0.5rem;">
+            <i class="fas fa-check-circle"></i> Connected
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <div class="form-actions" style="margin-top: 2rem;">
+      <button type="button" class="btn-primary" onclick="startMigration()" id="start-btn">
+        <i class="fas fa-play"></i> Start Migration
+      </button>
+      <a href="{{ url_for('main.destination_details') }}" class="link-btn">Back</a>
+    </div>
+  </div>
+
+  <script>
+    function startMigration() {
+      const btn = document.getElementById('start-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+      
+      // Here you would trigger the actual migration process
+      // For now, show a success message
+      alert('Migration process started! Check the console for progress.');
+      
+      // Reset button
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play"></i> Start Migration';
+    }
+  </script>
+{% endblock %}

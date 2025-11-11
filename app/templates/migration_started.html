@@ -2,16 +2,32 @@
 
 {% block content %}
   <div class="page-card">
-    <h2>Migration started</h2>
-    <p class="muted">The following VM identifiers were received. In a full implementation these would be enqueued for background migration jobs:</p>
-    <ul>
-      {% for v in vms %}
-        <li>{{ v }}</li>
-      {% endfor %}
-    </ul>
-    <p class="muted">Next steps: export/copy to destination, background workers, progress tracking, and verification.</p>
-    <div class="form-actions">
+    <h2>Selected VMs for Migration</h2>
+    <p class="muted">The following VMs have been selected for migration:</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Sr. No.</th>
+          <th>VM Name</th>
+          <th>Instance UUID</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vms %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ v.name }}</td>
+            <td>{{ v.instance_uuid }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    
+    <div class="form-actions" style="margin-top: 2rem;">
+      <a href="{{ url_for('main.destination_details') }}" class="btn-primary">Continue to Destination</a>
       <a href="{{ url_for('main.index') }}" class="link-btn">Back to Home</a>
     </div>
   </div>
 {% endblock %}
+
+```

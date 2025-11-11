@@ -1,0 +1,106 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <div class="page-card">
+    <h2>Connect to Destination: {{ destination|upper }}</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">
+            {% if category == 'success' %}
+              <i class="fas fa-check-circle"></i>
+            {% else %}
+              <i class="fas fa-exclamation-circle"></i>
+            {% endif %}
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    
+    {% if destination == 'proxmox' %}
+      <form action="{{ url_for('main.connect_destination') }}" method="post" id="connect-form">
+        <div class="form-group">
+          <label>Proxmox Host (IP or hostname)</label>
+          <input class="input-field" name="host" required>
+        </div>
+        <div class="form-group">
+          <label>Username (e.g., root@pam or user@realm)</label>
+          <input class="input-field" name="username" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input class="input-field" name="password" type="password" required>
+        </div>
+        <div class="form-group">
+          <label>Port (optional, default: 8006)</label>
+          <input class="input-field" name="port" type="number" value="8006">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="connect-button">
+            <span class="button-text">Connect to Proxmox</span>
+            <i class="fas fa-spinner fa-spin" style="display: none;"></i>
+          </button>
+          <a href="{{ url_for('main.start_migration') }}" class="link-btn">Back</a>
+        </div>
+      </form>
+    {% else %}
+      <p class="muted">Support for {{ destination }} is not yet implemented.</p>
+      <div class="form-actions"><a href="{{ url_for('main.index') }}" class="link-btn">Back</a></div>
+    {% endif %}
+  </div>
+
+  <script>
+    document.getElementById('connect-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const form = e.target;
+      const button = document.getElementById('connect-button');
+      const spinner = button.querySelector('.fa-spinner');
+      const text = button.querySelector('.button-text');
+
+      // Show spinner, disable button
+      spinner.style.display = 'inline-block';
+      text.textContent = 'Connecting...';
+      button.disabled = true;
+
+      // Prepare form data
+      const data = new FormData(form);
+
+      try {
+        const resp = await fetch(form.action, {
+          method: 'POST',
+          body: data,
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        const json = await resp.json();
+
+        if (!resp.ok) {
+          // Show error message
+          alert(json.message || 'Connection failed');
+          spinner.style.display = 'none';
+          text.textContent = 'Connect to Proxmox';
+          button.disabled = false;
+          return;
+        }
+
+        // Success: show green state on button and navigate
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-success');
+        text.textContent = 'Connected';
+        spinner.style.display = 'none';
+
+        // brief delay so user sees the green state
+        setTimeout(function(){
+          window.location.href = json.redirect_url;
+        }, 700);
+
+      } catch (err) {
+        alert('Connection failed: ' + err.message);
+        spinner.style.display = 'none';
+        text.textContent = 'Connect to Proxmox';
+        button.disabled = false;
+      }
+    });
+  </script>
+{% endblock %}
