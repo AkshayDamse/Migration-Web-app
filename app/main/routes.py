@@ -126,22 +126,55 @@ def vm_list_get():
 
 @bp.route("/start-migration", methods=["POST"])
 def start_migration():
-    """Receive selected VM serial number and show migration page for that VM only."""
+    """Receive selected VM serial numbers and show migration page for those VMs.
+    
+    Supports formats:
+    - Single: "1"
+    - Multiple: "1,3,5"
+    - Range: "5-7"
+    - Mixed: "1,3,5-7"
+    """
     vms = session.get('last_vm_list')
     if not vms:
         flash("No VM list found in session. Please connect first.", "error")
         return redirect(url_for("main.index"))
 
-    serial_str = request.form.get("selected_vm")
+    serial_input = request.form.get("selected_vm", "").strip()
+    if not serial_input:
+        flash("Please enter at least one VM serial number.", "error")
+        return redirect(url_for("main.vm_list_get"))
+
+    # Parse the input to extract all serial numbers
+    selected_indices = set()
     try:
-        serial = int(serial_str)
-    except (TypeError, ValueError):
-        flash("Please enter a valid serial number.", "error")
+        parts = serial_input.split(',')
+        for part in parts:
+            part = part.strip()
+            if '-' in part:
+                # Handle range (e.g., "5-7")
+                range_parts = part.split('-')
+                if len(range_parts) != 2:
+                    raise ValueError(f"Invalid range format: {part}")
+                start = int(range_parts[0].strip())
+                end = int(range_parts[1].strip())
+                if start > end:
+                    start, end = end, start
+                for i in range(start, end + 1):
+                    selected_indices.add(i)
+            else:
+                # Handle single number
+                num = int(part)
+                selected_indices.add(num)
+    except ValueError as e:
+        flash(f"Invalid input format: {str(e)}. Use format like '1' or '1,3,5-7'.", "error")
         return redirect(url_for("main.vm_list_get"))
 
-    if serial < 1 or serial > len(vms):
-        flash("Serial number out of range.", "error")
+    # Validate all indices are within range
+    invalid_indices = [i for i in selected_indices if i < 1 or i > len(vms)]
+    if invalid_indices:
+        flash(f"Invalid serial numbers: {', '.join(map(str, sorted(invalid_indices)))}. Valid range is 1-{len(vms)}.", "error")
         return redirect(url_for("main.vm_list_get"))
 
-    selected_vm = vms[serial - 1]
-    return render_template("migration_started.html", vms=[selected_vm])
+    # Get the selected VMs in order
+    selected_vms = [vms[i - 1] for i in sorted(selected_indices)]
+    return render_template("migration_started.html", vms=selected_vms)
