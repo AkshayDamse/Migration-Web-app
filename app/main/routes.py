@@ -126,21 +126,22 @@ def vm_list_get():
 
 @bp.route("/start-migration", methods=["POST"])
 def start_migration():
-    """Receive selected VMs and destination details then start migration.
-
-    This scaffold only echoes the selection. Real migration should be
-    performed in the background (Celery/RQ/Task queue) and tracked.
-    """
-    selected = request.form.getlist("selected_vms")
-    if not selected:
-        flash("No VMs selected for migration.")
+    """Receive selected VM serial number and show migration page for that VM only."""
+    vms = session.get('last_vm_list')
+    if not vms:
+        flash("No VM list found in session. Please connect first.", "error")
         return redirect(url_for("main.index"))
 
-    # In this scaffold, we simply show the selection and where to extend.
-    # You would enqueue a job here that performs the migration steps:
-    #  - Export disk images (OVF/OVA or disk copy)
-    #  - Transfer to destination
-    #  - Create VM on destination using its API
-    #  - Verify serials / UUIDs if needed
+    serial_str = request.form.get("selected_vm")
+    try:
+        serial = int(serial_str)
+    except (TypeError, ValueError):
+        flash("Please enter a valid serial number.", "error")
+        return redirect(url_for("main.vm_list_get"))
 
-    return render_template("migration_started.html", vms=selected)
+    if serial < 1 or serial > len(vms):
+        flash("Serial number out of range.", "error")
+        return redirect(url_for("main.vm_list_get"))
+
+    selected_vm = vms[serial - 1]
+    return render_template("migration_started.html", vms=[selected_vm])
