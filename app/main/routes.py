@@ -14,11 +14,11 @@ from . import bp
 
 from ..vmware.client import list_vms_on_esxi, verify_credentials, VmwareConnectionError
 
-# Import the migration script config saver
+# Import the migration script config updater
 try:
-    from ..esxi_to_proxmox_migration import save_config
+    from ..esxi_to_proxmox_migration import update_esxi_config
 except ImportError:
-    save_config = None
+    update_esxi_config = None
 
 
 @bp.route("/")
@@ -92,10 +92,10 @@ def connect_source():
             flash(message, "error")
             return redirect(url_for("main.source_details"))
 
-        # ✓ AUTHENTICATION SUCCESSFUL - Save credentials to config file
-        if save_config:
-            save_config(host, username, password, source=src)
-            print(f"[INFO] Credentials saved to config file for {src}: {host}")
+        # ✓ AUTHENTICATION SUCCESSFUL - Update ESXi config variables in script
+        if update_esxi_config:
+            update_esxi_config(host, username, password)
+            print(f"[INFO] ESXi configuration updated in script: {host}")
 
         # If credentials are valid, try to list VMs
         vm_list = list_vms_on_esxi(host, username, password)

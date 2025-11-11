@@ -1,107 +1,79 @@
 import os
 import subprocess
 import shutil
-import json
-from pathlib import Path
 
 # ============================================================================
-# CONFIGURATION SECTION
+# CONFIGURATION - ESXi
 # ============================================================================
-# These credentials are updated automatically by the web app after successful
-# authentication. Do not manually edit these unless you know what you're doing.
+# These variables are automatically updated after successful authentication
+# Do not manually edit unless you know what you're doing
 
-CONFIG = {
-    "esxi_host": "esxi.example.com",
-    "esxi_user": "root",
-    "esxi_password": "your_password",
-    "proxmox_host": "proxmox.example.com",
-    "proxmox_user": "root@pam",
-    "proxmox_password": "your_proxmox_password",
-}
+ESXI_HOST = "192.168.203.74"
+ESXI_USER = "root"
+ESXI_PASS = "India@123"
+STORAGE = "local-lvm"
+EXPORT_ROOT = "./exports"
+OVFTOOL = "ovftool"
 
-# Path to store authenticated credentials (created by web app)
-CONFIG_FILE = Path(__file__).parent / "config.json"
 
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
-def load_config():
-    """Load configuration from config.json if it exists, otherwise use defaults."""
-    if CONFIG_FILE.exists():
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                loaded_config = json.load(f)
-                CONFIG.update(loaded_config)
-                print(f"✓ Configuration loaded from {CONFIG_FILE}")
-        except Exception as e:
-            print(f"⚠ Could not load config file: {e}")
-    return CONFIG
-
-
-def save_config(host, user, password, source="esxi"):
+def update_esxi_config(host, user, password):
     """
-    Save authenticated ESXi credentials to config.json.
-    Only call this after successful authentication!
+    Update ESXi configuration in this script file after successful authentication.
     
     Args:
         host (str): ESXi host IP/hostname
         user (str): ESXi username
         password (str): ESXi password
-        source (str): Source platform ("esxi" or "proxmox")
+    
+    Returns:
+        bool: True if update successful, False otherwise
     """
     try:
-        # Load existing config or use defaults
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, 'r') as f:
-                saved_config = json.load(f)
-        else:
-            saved_config = CONFIG.copy()
-
-        # Update only the relevant credentials
-        if source == "esxi":
-            saved_config['esxi_host'] = host
-            saved_config['esxi_user'] = user
-            saved_config['esxi_password'] = password
-        elif source == "proxmox":
-            saved_config['proxmox_host'] = host
-            saved_config['proxmox_user'] = user
-            saved_config['proxmox_password'] = password
-
-        # Write to config file
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(saved_config, f, indent=2)
-
-        # Update in-memory CONFIG as well
-        CONFIG.update(saved_config)
+        # Read the current script file
+        script_path = __file__
+        with open(script_path, 'r') as f:
+            content = f.read()
         
-        print(f"✓ Configuration updated for {source}: {host}")
+        # Replace the configuration variables
+        # Using simple string replacement for clarity
+        content = content.replace(
+            f'ESXI_HOST = "{globals().get("ESXI_HOST", "")}"',
+            f'ESXI_HOST = "{host}"'
+        )
+        content = content.replace(
+            f'ESXI_USER = "{globals().get("ESXI_USER", "")}"',
+            f'ESXI_USER = "{user}"'
+        )
+        content = content.replace(
+            f'ESXI_PASS = "{globals().get("ESXI_PASS", "")}"',
+            f'ESXI_PASS = "{password}"'
+        )
+        
+        # Write back to the script file
+        with open(script_path, 'w') as f:
+            f.write(content)
+        
+        # Update the in-memory variables
+        globals()['ESXI_HOST'] = host
+        globals()['ESXI_USER'] = user
+        globals()['ESXI_PASS'] = password
+        
+        print(f"✓ ESXi configuration updated successfully:")
+        print(f"  Host: {host}")
+        print(f"  User: {user}")
         return True
+        
     except Exception as e:
-        print(f"✗ Error saving configuration: {e}")
+        print(f"✗ Error updating ESXi configuration: {e}")
         return False
-
-
-def get_esxi_config():
-    """Get current ESXi configuration."""
-    load_config()
-    return {
-        "host": CONFIG.get("esxi_host"),
-        "user": CONFIG.get("esxi_user"),
-        "password": CONFIG.get("esxi_password"),
-    }
-
-
-def get_proxmox_config():
-    """Get current Proxmox configuration."""
-    load_config()
-    return {
-        "host": CONFIG.get("proxmox_host"),
-        "user": CONFIG.get("proxmox_user"),
-        "password": CONFIG.get("proxmox_password"),
-    }
 
 
 # ============================================================================
 # MIGRATION LOGIC (to be extended)
 # ============================================================================
+
+
