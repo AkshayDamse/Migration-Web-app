@@ -14,6 +14,12 @@ from . import bp
 
 from ..vmware.client import list_vms_on_esxi, verify_credentials, VmwareConnectionError
 
+# Import the migration script config saver
+try:
+    from ..esxi_to_proxmox_migration import save_config
+except ImportError:
+    save_config = None
+
 
 @bp.route("/")
 def index():
@@ -85,6 +91,11 @@ def connect_source():
                 return jsonify(success=False, message=message), 400
             flash(message, "error")
             return redirect(url_for("main.source_details"))
+
+        # ✓ AUTHENTICATION SUCCESSFUL - Save credentials to config file
+        if save_config:
+            save_config(host, username, password, source=src)
+            print(f"[INFO] Credentials saved to config file for {src}: {host}")
 
         # If credentials are valid, try to list VMs
         vm_list = list_vms_on_esxi(host, username, password)
