@@ -190,9 +190,11 @@ def start_migration():
     # Get the selected VMs in order
     selected_vms = [vms[i - 1] for i in sorted(selected_indices)]
     
-    # ✓ UPDATE SELECTED VMs in the migration script
+    # ✓ UPDATE SELECTED VM SERIAL NUMBERS in the migration script
     if update_selected_vms:
-        update_selected_vms(selected_vms)
-        print(f"[INFO] Selected VMs updated in script: {[vm.get('name') for vm in selected_vms]}")
+        # Pass only the serial numbers (sorted)
+        serial_numbers = sorted(list(selected_indices))
+        update_selected_vms(serial_numbers)
+        print(f"[INFO] Selected VM serial numbers updated in script: {serial_numbers}")
     
     return render_template("migration_started.html", vms=selected_vms)

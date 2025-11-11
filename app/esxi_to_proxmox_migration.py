@@ -73,27 +73,24 @@ def update_esxi_config(host, user, password):
         return False
 
 
-def update_selected_vms(selected_vm_list):
+def update_selected_vms(selected_serial_numbers):
     """
-    Update the 'sel' variable with selected VM names based on user selection.
+    Update the 'sel' variable with selected VM serial numbers.
     
     Args:
-        selected_vm_list (list): List of selected VM dictionaries with 'name' and 'instance_uuid' keys
+        selected_serial_numbers (list): List of selected VM serial numbers (e.g., [1, 3, 5])
     
     Returns:
         bool: True if update successful, False otherwise
     """
     try:
-        # Extract VM names from the selected VMs
-        vm_names = [vm.get('name', '') for vm in selected_vm_list]
-        
         # Read the current script file
         script_path = __file__
         with open(script_path, 'r') as f:
             content = f.read()
         
-        # Format the sel list as Python code
-        sel_value = str(vm_names)
+        # Format the sel list as Python code with serial numbers
+        sel_value = str(selected_serial_numbers)
         
         # Replace the sel variable
         # Find the current sel value and replace it
@@ -110,10 +107,10 @@ def update_selected_vms(selected_vm_list):
             f.write(content)
         
         # Update the in-memory variable
-        globals()['sel'] = vm_names
+        globals()['sel'] = selected_serial_numbers
         
-        print(f"✓ Selected VMs updated successfully:")
-        print(f"  sel = {vm_names}")
+        print(f"✓ Selected VM serial numbers updated successfully:")
+        print(f"  sel = {selected_serial_numbers}")
         return True
         
     except Exception as e:
