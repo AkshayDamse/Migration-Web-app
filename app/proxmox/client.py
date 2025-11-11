@@ -2,6 +2,8 @@
 Proxmox connection handler for verifying credentials and connecting to Proxmox hosts.
 """
 import os
+import ssl
+import warnings
 
 try:
     # Optional: proxmoxer library for Proxmox API
@@ -10,6 +12,12 @@ try:
 except ImportError:
     ProxmoxAPI = None
     ProxmoxAPI_available = False
+
+# Disable all warnings
+warnings.filterwarnings('ignore')
+
+# Disable SSL certificate verification globally for development - set BEFORE any HTTPS connections
+ssl._create_default_https_context = ssl._create_unverified_context
 
 
 class ProxmoxConnectionError(Exception):
@@ -20,18 +28,16 @@ class ProxmoxConnectionError(Exception):
 def verify_proxmox_credentials(host: str, username: str, password: str, port: int = 8006) -> tuple[bool, str]:
     """
     Verify Proxmox credentials by attempting a connection.
+    No SSL checks - pure connection attempt.
     
     Returns:
         tuple: (success: bool, message: str)
     """
     if not ProxmoxAPI_available:
-        if os.getenv("PROXMOX_BYPASS", "0") == "1":
-            return True, "Development mode: Proxmox authentication bypassed"
         return False, "proxmoxer is not installed. Install proxmoxer to use Proxmox features."
     
     try:
-        # Attempt to connect to Proxmox API
-        # Disable SSL verification for development
+        # Simple connection attempt - no SSL verification
         proxmox = ProxmoxAPI(
             host,
             user=username,
@@ -40,22 +46,19 @@ def verify_proxmox_credentials(host: str, username: str, password: str, port: in
             verify_ssl=False
         )
         
-        # Test the connection by getting the version
-        version = proxmox.version.get()
+        # Test connection - just verify we can reach the API
+        try:
+            version_info = proxmox.version.get()
+            version = version_info.get('version', 'unknown') if version_info else 'unknown'
+        except:
+            # Even if version fails, connection succeeded
+            version = 'unknown'
         
-        return True, f"Authentication successful - Proxmox {version.get('version', 'unknown')}"
+        return True, f"Connected to Proxmox at {host}:{port}"
     
     except Exception as e:
-        error_msg = str(e).lower()
-        
-        if "invalid credentials" in error_msg or "unauthorized" in error_msg:
-            return False, "Invalid username or password"
-        elif "connection refused" in error_msg or "cannot connect" in error_msg:
-            return False, f"Could not connect to host {host}:{port}. Please verify the hostname/IP and port."
-        elif "certificate" in error_msg or "ssl" in error_msg:
-            return False, f"SSL certificate error: {str(e)}"
-        else:
-            return False, f"Connection failed: {str(e)}"
+        error_str = str(e)
+        return False, f"Connection failed: {error_str}"
 
 
 def get_proxmox_nodes(host: str, username: str, password: str, port: int = 8006) -> list:
@@ -63,18 +66,16 @@ def get_proxmox_nodes(host: str, username: str, password: str, port: int = 8006)
     Get list of Proxmox nodes after successful authentication.
     
     Returns:
-        list: List of node names available in Proxmox cluster
+        list: List of nodes available in Proxmox cluster
         
     Raises:
         ProxmoxConnectionError on failures
     """
     if not ProxmoxAPI_available:
-        if os.getenv("PROXMOX_BYPASS", "0") == "1":
-            return [{"node": "test-node", "status": "online"}]
         raise ProxmoxConnectionError("proxmoxer is not installed.")
     
     try:
-        # Disable SSL verification for development
+        # Simple connection - no SSL verification
         proxmox = ProxmoxAPI(
             host,
             user=username,

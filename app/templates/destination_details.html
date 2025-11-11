@@ -67,17 +67,24 @@
       const data = new FormData(form);
 
       try {
+        console.log('Submitting Proxmox connection form to:', form.action);
         const resp = await fetch(form.action, {
           method: 'POST',
           body: data,
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
 
+        console.log('Response status:', resp.status);
+        console.log('Response ok:', resp.ok);
+
         const json = await resp.json();
+        console.log('Response JSON:', json);
 
         if (!resp.ok) {
           // Show error message
-          alert(json.message || 'Connection failed');
+          const errorMsg = json.message || 'Connection failed';
+          console.error('Connection error:', errorMsg);
+          alert(errorMsg);
           spinner.style.display = 'none';
           text.textContent = 'Connect to Proxmox';
           button.disabled = false;
@@ -85,6 +92,7 @@
         }
 
         // Success: show green state on button and navigate
+        console.log('Connection successful, showing green button');
         button.classList.remove('btn-primary');
         button.classList.add('btn-success');
         text.textContent = 'Connected';
@@ -92,10 +100,12 @@
 
         // brief delay so user sees the green state
         setTimeout(function(){
+          console.log('Redirecting to:', json.redirect_url);
           window.location.href = json.redirect_url;
         }, 700);
 
       } catch (err) {
+        console.error('Fetch exception:', err);
         alert('Connection failed: ' + err.message);
         spinner.style.display = 'none';
         text.textContent = 'Connect to Proxmox';
