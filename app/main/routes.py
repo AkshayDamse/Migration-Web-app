@@ -16,9 +16,10 @@ from ..vmware.client import list_vms_on_esxi, verify_credentials, VmwareConnecti
 
 # Import the migration script config updater
 try:
-    from ..esxi_to_proxmox_migration import update_esxi_config
+    from ..esxi_to_proxmox_migration import update_esxi_config, update_selected_vms
 except ImportError:
     update_esxi_config = None
+    update_selected_vms = None
 
 
 @bp.route("/")
@@ -188,4 +189,10 @@ def start_migration():
 
     # Get the selected VMs in order
     selected_vms = [vms[i - 1] for i in sorted(selected_indices)]
+    
+    # ✓ UPDATE SELECTED VMs in the migration script
+    if update_selected_vms:
+        update_selected_vms(selected_vms)
+        print(f"[INFO] Selected VMs updated in script: {[vm.get('name') for vm in selected_vms]}")
+    
     return render_template("migration_started.html", vms=selected_vms)

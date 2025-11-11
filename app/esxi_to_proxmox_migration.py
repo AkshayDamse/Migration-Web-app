@@ -14,6 +14,7 @@ ESXI_PASS = "India@123"
 STORAGE = "local-lvm"
 EXPORT_ROOT = "./exports"
 OVFTOOL = "ovftool"
+sel = []
 
 
 # ============================================================================
@@ -69,6 +70,54 @@ def update_esxi_config(host, user, password):
         
     except Exception as e:
         print(f"✗ Error updating ESXi configuration: {e}")
+        return False
+
+
+def update_selected_vms(selected_vm_list):
+    """
+    Update the 'sel' variable with selected VM names based on user selection.
+    
+    Args:
+        selected_vm_list (list): List of selected VM dictionaries with 'name' and 'instance_uuid' keys
+    
+    Returns:
+        bool: True if update successful, False otherwise
+    """
+    try:
+        # Extract VM names from the selected VMs
+        vm_names = [vm.get('name', '') for vm in selected_vm_list]
+        
+        # Read the current script file
+        script_path = __file__
+        with open(script_path, 'r') as f:
+            content = f.read()
+        
+        # Format the sel list as Python code
+        sel_value = str(vm_names)
+        
+        # Replace the sel variable
+        # Find the current sel value and replace it
+        import re
+        content = re.sub(
+            r'sel = \[.*?\]',
+            f'sel = {sel_value}',
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Write back to the script file
+        with open(script_path, 'w') as f:
+            f.write(content)
+        
+        # Update the in-memory variable
+        globals()['sel'] = vm_names
+        
+        print(f"✓ Selected VMs updated successfully:")
+        print(f"  sel = {vm_names}")
+        return True
+        
+    except Exception as e:
+        print(f"✗ Error updating selected VMs: {e}")
         return False
 
 
