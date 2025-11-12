@@ -220,28 +220,37 @@ def destination_details():
 
 @bp.route("/connect-destination", methods=["POST"])
 def connect_destination():
-    """Attempt to connect to the destination platform and verify credentials."""
+    """Attempt to connect to the destination Proxmox platform using password authentication."""
     import sys
+    
+    print(f"[ROUTE] /connect-destination called", file=sys.stderr)
     
     platforms = session.get("platforms")
     if not platforms:
+        print(f"[ROUTE] No platforms in session", file=sys.stderr)
         return redirect(url_for("main.index"))
 
     destination = platforms["destination"]
     if destination != "proxmox":
         msg = "Only Proxmox destination is implemented."
+        print(f"[ROUTE] Wrong destination: {destination}", file=sys.stderr)
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify(success=False, message=msg), 400
         flash(msg, "error")
         return redirect(url_for("main.destination_details"))
 
-    host = request.form.get("host")
-    username = request.form.get("username")
-    password = request.form.get("password")
-    port = request.form.get("port", 8006)
+    # Get form data
+    host = request.form.get("host", "").strip()
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    port = request.form.get("port", "8006").strip()
 
+    print(f"[ROUTE] Form data - host={host}, username={username}, port={port}", file=sys.stderr)
+
+    # Validate inputs
     if not host or not username or not password:
         msg = "Provide host, username, and password to connect."
+        print(f"[ROUTE] Missing inputs", file=sys.stderr)
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify(success=False, message=msg), 400
         flash(msg, "error")
@@ -252,25 +261,28 @@ def connect_destination():
     except ValueError:
         port = 8006
 
-    # Try to verify Proxmox credentials
+    # Try to verify Proxmox credentials using password
     try:
         if not verify_proxmox_credentials:
             msg = "Proxmox client not available."
-            print(f"ERROR: {msg}", file=sys.stderr)
+            print(f"[ROUTE] ERROR: {msg}", file=sys.stderr)
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify(success=False, message=msg), 500
             flash(msg, "error")
             return redirect(url_for("main.destination_details"))
 
-        print(f"DEBUG: Connecting to Proxmox {host}:{port} with user {username}", file=sys.stderr)
+        print(f"[ROUTE] Verifying credentials for {host}:{port}", file=sys.stderr)
+        
         success, message = verify_proxmox_credentials(host, username, password, port)
-        print(f"DEBUG: Proxmox connection result - success={success}, message={message}", file=sys.stderr)
+        print(f"[ROUTE] Verification result - success={success}, message={message}", file=sys.stderr)
         
         if not success:
-            print(f"DEBUG: Proxmox authentication failed: {message}", file=sys.stderr)
+            print(f"[ROUTE] Authentication failed: {message}", file=sys.stderr)
             # If AJAX request, return JSON error
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify(success=False, message=message), 400
+                resp = jsonify(success=False, message=message)
+                print(f"[ROUTE] Returning error JSON: {resp.get_json()}", file=sys.stderr)
+                return resp, 400
             flash(message, "error")
             return redirect(url_for("main.destination_details"))
 
@@ -280,24 +292,29 @@ def connect_destination():
         session['destination_pass'] = password
         session['destination_port'] = port
         session['authenticated_destination'] = True
-        print(f"DEBUG: Proxmox authentication successful", file=sys.stderr)
+        session.modified = True  # Force session update
+        print(f"[ROUTE] Authentication successful - stored in session", file=sys.stderr)
 
         # If AJAX request, return JSON with redirect
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify(
+            resp = jsonify(
                 success=True,
                 message=message,
                 redirect_url=url_for('main.migration_summary')
             )
+            print(f"[ROUTE] Returning success JSON", file=sys.stderr)
+            return resp
 
         flash(message, "success")
 
     except Exception as e:
-        print(f"ERROR: Exception in connect_destination: {str(e)}", file=sys.stderr)
+        print(f"[ROUTE] EXCEPTION: {str(e)}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify(success=False, message=f"Connection failed: {str(e)}"), 500
+            resp = jsonify(success=False, message=f"Connection failed: {str(e)}")
+            print(f"[ROUTE] Returning exception JSON", file=sys.stderr)
+            return resp, 500
         flash(f"Connection failed: {str(e)}", "error")
         return redirect(url_for("main.destination_details"))
 

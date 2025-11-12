@@ -16,8 +16,11 @@ except ImportError:
 # Disable all warnings
 warnings.filterwarnings('ignore')
 
-# Disable SSL certificate verification globally for development - set BEFORE any HTTPS connections
-ssl._create_default_https_context = ssl._create_unverified_context
+# Disable SSL certificate verification globally for development
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except:
+    pass
 
 
 class ProxmoxConnectionError(Exception):
@@ -27,8 +30,14 @@ class ProxmoxConnectionError(Exception):
 
 def verify_proxmox_credentials(host: str, username: str, password: str, port: int = 8006) -> tuple[bool, str]:
     """
-    Verify Proxmox credentials by attempting a connection.
-    No SSL checks - pure connection attempt.
+    Verify Proxmox credentials using password authentication.
+    No SSL checks - bypasses all SSL/certificate validation.
+    
+    Args:
+        host: Proxmox host IP or hostname
+        username: Username (e.g., root@pam)
+        password: Password for the user
+        port: Proxmox API port (default 8006)
     
     Returns:
         tuple: (success: bool, message: str)
@@ -37,33 +46,53 @@ def verify_proxmox_credentials(host: str, username: str, password: str, port: in
         return False, "proxmoxer is not installed. Install proxmoxer to use Proxmox features."
     
     try:
+        import sys
+        print(f"[PROXMOX] Attempting connection to {host}:{port}", file=sys.stderr)
+        
+        # Ensure SSL bypass is set
+        ssl._create_default_https_context = ssl._create_unverified_context
+        
         # Simple connection attempt - no SSL verification
         proxmox = ProxmoxAPI(
             host,
             user=username,
             password=password,
-            port=port,
-            verify_ssl=False
+            port=int(port),
+            verify_ssl=False,
+            timeout=10
         )
         
-        # Test connection - just verify we can reach the API
+        print(f"[PROXMOX] Connection created, attempting to get version", file=sys.stderr)
+        
+        # Test connection by getting version
         try:
             version_info = proxmox.version.get()
             version = version_info.get('version', 'unknown') if version_info else 'unknown'
-        except:
-            # Even if version fails, connection succeeded
-            version = 'unknown'
-        
-        return True, f"Connected to Proxmox at {host}:{port}"
+            msg = f"Connected to Proxmox {version} at {host}:{port}"
+            print(f"[PROXMOX] SUCCESS: {msg}", file=sys.stderr)
+            return True, msg
+        except Exception as version_err:
+            # Even if version fails, connection might have succeeded
+            print(f"[PROXMOX] Version check failed but connection OK: {str(version_err)}", file=sys.stderr)
+            return True, f"Connected to Proxmox at {host}:{port}"
     
     except Exception as e:
         error_str = str(e)
+        print(f"[PROXMOX] FAILED: {error_str}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         return False, f"Connection failed: {error_str}"
 
 
 def get_proxmox_nodes(host: str, username: str, password: str, port: int = 8006) -> list:
     """
-    Get list of Proxmox nodes after successful authentication.
+    Get list of Proxmox nodes using password authentication.
+    
+    Args:
+        host: Proxmox host IP or hostname
+        username: Username (e.g., root@pam)
+        password: Password for the user
+        port: Proxmox API port (default 8006)
     
     Returns:
         list: List of nodes available in Proxmox cluster
