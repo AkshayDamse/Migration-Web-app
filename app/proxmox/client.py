@@ -13,12 +13,12 @@ except ImportError:
     ProxmoxAPI = None
     ProxmoxAPI_available = False
 
-    # Check for requests library which proxmoxer often requires as a backend
-    try:
-        import requests  # noqa: F401
-        requests_available = True
-    except Exception:
-        requests_available = False
+# Check for requests library which proxmoxer often requires as a backend
+try:
+    import requests  # noqa: F401
+    requests_available = True
+except Exception:
+    requests_available = False
 
 # Disable all warnings
 warnings.filterwarnings('ignore')
