@@ -13,6 +13,13 @@ except ImportError:
     ProxmoxAPI = None
     ProxmoxAPI_available = False
 
+    # Check for requests library which proxmoxer often requires as a backend
+    try:
+        import requests  # noqa: F401
+        requests_available = True
+    except Exception:
+        requests_available = False
+
 # Disable all warnings
 warnings.filterwarnings('ignore')
 
@@ -43,7 +50,11 @@ def verify_proxmox_credentials(host: str, username: str, password: str, port: in
         tuple: (success: bool, message: str)
     """
     if not ProxmoxAPI_available:
-        return False, "proxmoxer is not installed. Install proxmoxer to use Proxmox features."
+        return False, "proxmoxer is not installed. Run: pip install proxmoxer"
+
+    if not requests_available:
+        # Give an explicit actionable error so the user knows what's missing
+        return False, "The 'requests' Python package is required by proxmoxer. Run: pip install requests"
     
     try:
         import sys

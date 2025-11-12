@@ -24,6 +24,7 @@ except ImportError:
 # Import Proxmox client
 try:
     from ..proxmox.client import verify_proxmox_credentials, ProxmoxConnectionError
+    from ..ssh_runner import start_remote_migration, get_job_status, SSHRunnerError
 except ImportError:
     verify_proxmox_credentials = None
     ProxmoxConnectionError = None
@@ -340,4 +341,39 @@ def migration_summary():
         destination_host=dest_host,
         authenticated=auth_flag
     )
+
+
+@bp.route('/start-remote-migration', methods=['POST'])
+def start_remote_migration_route():
+    """Start remote migration by uploading and running the script via SSH.
+
+    This reads Proxmox SSH creds from session (destination_host, destination_user, destination_pass)
+    and starts a background job. Returns a job id for polling.
+    """
+    host = session.get('destination_host')
+    user = session.get('destination_user')
+    password = session.get('destination_pass')
+    port = session.get('destination_port', 22)
+
+    if not host or not user or not password:
+        return jsonify(success=False, message='Missing destination SSH credentials. Connect first.'), 400
+
+    try:
+        job_id = start_remote_migration(host, user, password, port=int(port), remote_path='/root')
+        return jsonify(success=True, job_id=job_id)
+    except SSHRunnerError as e:
+        return jsonify(success=False, message=str(e)), 500
+    except Exception as e:
+        return jsonify(success=False, message=f'Failed to start remote migration: {e}'), 500
+
+
+@bp.route('/migration-status/<job_id>', methods=['GET'])
+def migration_status(job_id):
+    try:
+        job = get_job_status(job_id)
+        return jsonify(success=True, job=job)
+    except SSHRunnerError:
+        return jsonify(success=False, message='Job not found'), 404
+    except Exception as e:
+        return jsonify(success=False, message=str(e)), 500
 

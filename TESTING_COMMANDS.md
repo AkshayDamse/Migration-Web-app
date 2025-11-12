@@ -40,6 +40,7 @@ pip list
 ```
 
 **Expected Output:** Should show `proxmoxer` and `pyvmomi` installed
+**Also required:** `requests` package (used by proxmoxer backend)
 
 ---
 
@@ -122,6 +123,12 @@ except Exception as e:
 **What to look for:**
 - ✓ If you see "Connection successful!" - The credentials and network are working
 - ✗ If you see an error - Note the exact error message and provide it
+
+If you see an error containing "Chosen backend requires 'requests' module" or similar, install the requests package:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install requests
+```
 
 ---
 
@@ -308,6 +315,9 @@ Test-NetConnection -ComputerName 192.68.203.32 -Port 8006
 
 # 4. Start Flask (keep running)
 .\.venv\Scripts\python.exe run.py
+
+# (Optional) If proxmoxer complains about missing dependencies, install from requirements
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
 # 5. In another terminal, test endpoint (UPDATE PASSWORD)
 $body = @{host="192.68.203.32"; username="root@pam"; password="YOUR_PASSWORD"; port="8006"}

@@ -47,21 +47,62 @@
       </button>
       <a href="{{ url_for('main.destination_details') }}" class="link-btn">Back</a>
     </div>
+
+    <div class="page-card" style="margin-top: 1rem;">
+      <h3>Live Migration Logs</h3>
+      <div id="migration-logs" style="white-space: pre-wrap; background:#111; color:#0f0; padding:1rem; height:300px; overflow:auto; font-family: monospace; font-size:12px; border-radius:4px;"></div>
+    </div>
   </div>
 
   <script>
-    function startMigration() {
+    let currentJob = null;
+    async function startMigration() {
       const btn = document.getElementById('start-btn');
+      const logsEl = document.getElementById('migration-logs');
       btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
-      
-      // Here you would trigger the actual migration process
-      // For now, show a success message
-      alert('Migration process started! Check the console for progress.');
-      
-      // Reset button
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-play"></i> Start Migration';
+
+      try {
+        const resp = await fetch('{{ url_for("main.start_remote_migration_route") }}', { method: 'POST' });
+        const json = await resp.json();
+        if (!json.success) {
+          alert('Failed to start migration: ' + (json.message || 'unknown'));
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-play"></i> Start Migration';
+          return;
+        }
+
+        currentJob = json.job_id;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+
+        // Poll logs
+        const poll = setInterval(async () => {
+          const s = await fetch('{{ url_for("main.migration_status", job_id="") }}' + currentJob);
+          const j = await s.json();
+          if (!j.success) {
+            logsEl.textContent += '\nERROR: ' + (j.message || 'unknown');
+            clearInterval(poll);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play"></i> Start Migration';
+            return;
+          }
+
+          const job = j.job;
+          logsEl.textContent = job.logs.join('\n');
+          logsEl.scrollTop = logsEl.scrollHeight;
+
+          if (job.status === 'finished' || job.status === 'failed') {
+            clearInterval(poll);
+            btn.disabled = false;
+            btn.innerHTML = job.status === 'finished' ? '<i class="fas fa-check"></i> Done' : '<i class="fas fa-exclamation-triangle"></i> Failed';
+          }
+        }, 1500);
+
+      } catch (err) {
+        alert('Error starting migration: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Start Migration';
+      }
     }
   </script>
 {% endblock %}
