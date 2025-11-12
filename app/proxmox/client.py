@@ -4,6 +4,7 @@ Proxmox connection handler for verifying credentials and connecting to Proxmox h
 import os
 import ssl
 import warnings
+import socket
 
 try:
     # Optional: proxmoxer library for Proxmox API
@@ -59,18 +60,33 @@ def verify_proxmox_credentials(host: str, username: str, password: str, port: in
     try:
         import sys
         print(f"[PROXMOX] Attempting connection to {host}:{port}", file=sys.stderr)
+        # Quick TCP check to fail fast if host/port are unreachable
+        try:
+            sock_timeout = 5
+            sock = socket.create_connection((host, int(port)), timeout=sock_timeout)
+            sock.close()
+            print(f"[PROXMOX] TCP connect to {host}:{port} succeeded (timeout {sock_timeout}s)", file=sys.stderr)
+        except Exception as sock_err:
+            # Return a clear, actionable error for unreachable host/port
+            msg = (
+                f"Connection failed: cannot reach {host}:{port} (TCP connect failed: {sock_err}). "
+                "Check IP, port, firewall, and network routing. Try: `ping {host}` and `Test-NetConnection -ComputerName {host} -Port {port}`"
+            )
+            print(f"[PROXMOX] TCP connect failed: {sock_err}", file=sys.stderr)
+            return False, msg
         
         # Ensure SSL bypass is set
         ssl._create_default_https_context = ssl._create_unverified_context
         
         # Simple connection attempt - no SSL verification
+        # Increase timeout to allow slower responses on some networks
         proxmox = ProxmoxAPI(
             host,
             user=username,
             password=password,
             port=int(port),
             verify_ssl=False,
-            timeout=10
+            timeout=30
         )
         
         print(f"[PROXMOX] Connection created, attempting to get version", file=sys.stderr)
@@ -89,6 +105,13 @@ def verify_proxmox_credentials(host: str, username: str, password: str, port: in
     
     except Exception as e:
         error_str = str(e)
+        # Provide more guidance for timeout-like errors
+        if 'Max retries exceeded' in error_str or 'timed out' in error_str or 'ConnectTimeout' in error_str:
+            error_str = (
+                error_str +
+                " -- Network connection timed out while contacting Proxmox API. Check host/port and firewall. "
+                "If the Proxmox web UI is reachable from this machine, ensure the API port (default 8006) is open."
+            )
         print(f"[PROXMOX] FAILED: {error_str}", file=sys.stderr)
         import traceback
         traceback.print_exc()
