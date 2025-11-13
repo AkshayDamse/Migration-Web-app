@@ -39,20 +39,13 @@ def update_esxi_config(host, user, password):
         with open(script_path, 'r') as f:
             content = f.read()
         
-        # Replace the configuration variables
-        # Using simple string replacement for clarity
-        content = content.replace(
-            f'ESXI_HOST = "{globals().get("ESXI_HOST", "")}"',
-            f'ESXI_HOST = "{host}"'
-        )
-        content = content.replace(
-            f'ESXI_USER = "{globals().get("ESXI_USER", "")}"',
-            f'ESXI_USER = "{user}"'
-        )
-        content = content.replace(
-            f'ESXI_PASS = "{globals().get("ESXI_PASS", "")}"',
-            f'ESXI_PASS = "{password}"'
-        )
+        # Replace the configuration variables using regex so updates work
+        # regardless of the current in-file values.
+        import re
+        content = re.sub(r'^ESXI_HOST\s*=\s*".*"', f'ESXI_HOST = "{host}"', content, flags=re.MULTILINE)
+        content = re.sub(r'^ESXI_USER\s*=\s*".*"', f'ESXI_USER = "{user}"', content, flags=re.MULTILINE)
+        # For passwords allow any characters inside quotes (non-greedy)
+        content = re.sub(r'^ESXI_PASS\s*=\s*".*"', f'ESXI_PASS = "{password}"', content, flags=re.MULTILINE)
         
         # Write back to the script file
         with open(script_path, 'w') as f:
@@ -92,14 +85,13 @@ def update_selected_vms(selected_serial_numbers):
         # Format the sel list as Python code with serial numbers
         sel_value = str(selected_serial_numbers)
         
-        # Replace the sel variable
-        # Find the current sel value and replace it
+        # Replace the sel variable using a robust regex that tolerates spaces
         import re
         content = re.sub(
-            r'sel = \[.*?\]',
+            r'^sel\s*=\s*\[.*?\]',
             f'sel = {sel_value}',
             content,
-            flags=re.DOTALL
+            flags=re.DOTALL | re.MULTILINE
         )
         
         # Write back to the script file
