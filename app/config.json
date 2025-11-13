@@ -1,0 +1,9 @@
+{
+  "esxi_host": "192.168.203.74",
+  "esxi_user": "root",
+  "esxi_pass": "India@123",
+  "storage": "local-lvm",
+  "export_root": "./exports",
+  "ovftool": "ovftool",
+  "selected_vms": []
+}
