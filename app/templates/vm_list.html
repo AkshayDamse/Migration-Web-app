@@ -9,10 +9,11 @@
         Authenticated to {{ host }} — listing VMs below.
       </div>
     {% endif %}
-    <form action="{{ url_for('main.start_migration') }}" method="post">
+    <form action="{{ url_for('main.start_migration') }}" method="post" id="vm-select-form">
       <table>
         <thead>
           <tr>
+            <th>Select</th>
             <th>Sr. No.</th>
             <th>Name</th>
             <th>Instance UUID</th>
@@ -21,6 +22,9 @@
         <tbody>
           {% for vm in vms %}
             <tr>
+              <td style="text-align: center;">
+                <input type="radio" name="selected_vm" value="{{ loop.index }}" id="vm_{{ loop.index }}" class="vm-radio">
+              </td>
               <td>{{ loop.index }}</td>
               <td>{{ vm.name }}</td>
               <td>{{ vm.instance_uuid }}</td>
@@ -28,14 +32,7 @@
           {% endfor %}
         </tbody>
       </table>
-      <div class="form-group" style="margin-top:2rem;">
-        <label for="selected_vm">Enter Sr. No. of VMs to migrate (comma or dash separated):</label>
-        <input type="text" name="selected_vm" id="selected_vm" class="input-field" placeholder="e.g., 1 or 1,3,5-7" required>
-        <small style="color: #64748b; display: block; margin-top: 0.5rem;">
-          Examples: 1 (single VM), 1,3,5 (multiple VMs), 5-7 (range), 1,3,5-7 (mixed)
-        </small>
-      </div>
-      <div class="form-actions">
+      <div class="form-actions" style="margin-top:1.5rem;">
         <button type="submit" class="btn-primary">Start Migration</button>
         <a href="{{ url_for('main.index') }}" class="link-btn">Back</a>
       </div>
@@ -43,4 +40,29 @@
   </div>
 
   <!-- No checkboxes, so no JS needed -->
+   <script>
+    // When a radio is changed, update config.json via AJAX
+    document.querySelectorAll('.vm-radio').forEach(function(radio){
+      radio.addEventListener('change', async function(e){
+        const serial = e.target.value;
+        try {
+          const resp = await fetch("{{ url_for('main.select_vm') }}", {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ serial: serial })
+          });
+          if (!resp.ok) {
+            const json = await resp.json().catch(()=>({message:'Request failed'}));
+            alert('Failed to save selection: ' + (json.message || resp.statusText));
+          }
+        } catch (err) {
+          console.error('Error updating selected VM:', err);
+          alert('Could not update selected VM: ' + err.message);
+        }
+      });
+    });
+  </script>
 {% endblock %}

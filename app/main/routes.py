@@ -207,6 +207,40 @@ def start_migration():
     
     return render_template("migration_started.html", vms=selected_vms)
 
+@bp.route('/select-vm', methods=['POST'])
+def select_vm():
+    """AJAX endpoint: update selected VM serial (single) in config.json.
+
+    Accepts JSON { serial: "3" } or form data 'serial' / 'selected_vm'.
+    """
+    vms = session.get('last_vm_list')
+    if not vms:
+        return jsonify(success=False, message='No VM list in session'), 400
+
+    serial = None
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        serial = body.get('serial')
+    else:
+        serial = request.form.get('serial') or request.form.get('selected_vm')
+
+    try:
+        serial_num = int(str(serial).strip())
+    except Exception:
+        return jsonify(success=False, message='Invalid serial number'), 400
+
+    if serial_num < 1 or serial_num > len(vms):
+        return jsonify(success=False, message=f'Invalid serial number. Valid range 1-{len(vms)}'), 400
+
+    # Update config via migration helper
+    if update_selected_vms:
+        try:
+            update_selected_vms([serial_num])
+        except Exception as e:
+            return jsonify(success=False, message=f'Failed to update config: {e}'), 500
+        return jsonify(success=True, message='Selection saved', serial=serial_num)
+
+    return jsonify(success=False, message='Update function not available'), 500
 
 @bp.route("/destination-details", methods=["GET"])
 def destination_details():
