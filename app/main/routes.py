@@ -21,14 +21,25 @@ except ImportError:
     update_esxi_config = None
     update_selected_vms = None
 
-# Import Proxmox client
+# Import Proxmox client (optional) and SSH runner
 try:
     from ..proxmox.client import verify_proxmox_credentials, ProxmoxConnectionError
-    from ..ssh_runner import start_remote_migration, get_job_status, SSHRunnerError
 except ImportError:
     verify_proxmox_credentials = None
     ProxmoxConnectionError = None
 
+try:
+    from ..ssh_runner import start_remote_migration, get_job_status, SSHRunnerError
+except ImportError:
+    start_remote_migration = None
+    get_job_status = None
+    SSHRunnerError = None
+
+# Migration module (to read current selected_vms state)
+try:
+    from .. import esxi_to_proxmox_migration as migration_mod
+except Exception:
+    migration_mod = None
 
 @bp.route("/")
 def index():
@@ -128,7 +139,14 @@ def connect_source():
     # Store a small representation in session for the selection step.
     # For production, use a DB or cache store (Redis) and do not store secrets in session.
     session["last_vm_list"] = vm_list
-    return render_template("vm_list.html", vms=vm_list, host=host)
+    selected_serials = []
+    if migration_mod:
+        try:
+            migration_mod.load_config()
+            selected_serials = migration_mod.sel if isinstance(migration_mod.sel, list) else []
+        except Exception:
+            selected_serials = []
+    return render_template("vm_list.html", vms=vm_list, host=host, selected_serials=selected_serials)
 
 
 @bp.route('/vm-list', methods=['GET'])
@@ -141,7 +159,14 @@ def vm_list_get():
         return redirect(url_for('main.source_details'))
 
     auth_flag = session.pop('authenticated', False)
-    return render_template('vm_list.html', vms=vms, host=host, authenticated=auth_flag)
+    selected_serials = []
+    if migration_mod:
+        try:
+            migration_mod.load_config()
+            selected_serials = migration_mod.sel if isinstance(migration_mod.sel, list) else []
+        except Exception:
+            selected_serials = []
+    return render_template('vm_list.html', vms=vms, host=host, authenticated=auth_flag, selected_serials=selected_serials)
 
 
 @bp.route("/start-migration", methods=["POST"])
@@ -274,17 +299,17 @@ def connect_destination():
         flash(msg, "error")
         return redirect(url_for("main.destination_details"))
 
-    # Get form data
+    # Get form data (SSH credentials for direct execution)
     host = request.form.get("host", "").strip()
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    port = request.form.get("port", "8006").strip()
+    port = request.form.get("port", "22").strip()
 
-    print(f"[ROUTE] Form data - host={host}, username={username}, port={port}", file=sys.stderr)
+    print(f"[ROUTE] SSH Form data - host={host}, username={username}, port={port}", file=sys.stderr)
 
     # Validate inputs
     if not host or not username or not password:
-        msg = "Provide host, username, and password to connect."
+        msg = "Provide host, username, and password for SSH."
         print(f"[ROUTE] Missing inputs", file=sys.stderr)
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify(success=False, message=msg), 400
@@ -294,67 +319,43 @@ def connect_destination():
     try:
         port = int(port)
     except ValueError:
-        port = 8006
+        port = 22
 
-    # Try to verify Proxmox credentials using password
+    # Store destination in session for later pages
+    session['destination_host'] = host
+    session['destination_user'] = username
+    session['destination_pass'] = password
+    session['destination_port'] = port
+    session['authenticated_destination'] = True
+    session.modified = True
+
+    # Start remote migration immediately via SSH using paramiko
+    if not start_remote_migration:
+        msg = 'SSH runner not available (paramiko missing)'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify(success=False, message=msg), 500
+        flash(msg, 'error')
+        return redirect(url_for('main.destination_details'))
+
     try:
-        if not verify_proxmox_credentials:
-            msg = "Proxmox client not available."
-            print(f"[ROUTE] ERROR: {msg}", file=sys.stderr)
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify(success=False, message=msg), 500
-            flash(msg, "error")
-            return redirect(url_for("main.destination_details"))
-
-        print(f"[ROUTE] Verifying credentials for {host}:{port}", file=sys.stderr)
-        
-        success, message = verify_proxmox_credentials(host, username, password, port)
-        print(f"[ROUTE] Verification result - success={success}, message={message}", file=sys.stderr)
-        
-        if not success:
-            print(f"[ROUTE] Authentication failed: {message}", file=sys.stderr)
-            # If AJAX request, return JSON error
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                resp = jsonify(success=False, message=message)
-                print(f"[ROUTE] Returning error JSON: {resp.get_json()}", file=sys.stderr)
-                return resp, 400
-            flash(message, "error")
-            return redirect(url_for("main.destination_details"))
-
-        # ✓ AUTHENTICATION SUCCESSFUL - Store Proxmox credentials in session
-        session['destination_host'] = host
-        session['destination_user'] = username
-        session['destination_pass'] = password
-        session['destination_port'] = port
-        session['authenticated_destination'] = True
-        session.modified = True  # Force session update
-        print(f"[ROUTE] Authentication successful - stored in session", file=sys.stderr)
-
-        # If AJAX request, return JSON with redirect
+        job_id = start_remote_migration(host, username, password, port=int(port), remote_path='/root', local_script='mscript.py')
+    except SSHRunnerError as e:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            resp = jsonify(
-                success=True,
-                message=message,
-                redirect_url=url_for('main.migration_summary')
-            )
-            print(f"[ROUTE] Returning success JSON", file=sys.stderr)
-            return resp
-
-        flash(message, "success")
-
+            return jsonify(success=False, message=str(e)), 500
+        flash(str(e), 'error')
+        return redirect(url_for('main.destination_details'))
     except Exception as e:
-        print(f"[ROUTE] EXCEPTION: {str(e)}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            resp = jsonify(success=False, message=f"Connection failed: {str(e)}")
-            print(f"[ROUTE] Returning exception JSON", file=sys.stderr)
-            return resp, 500
-        flash(f"Connection failed: {str(e)}", "error")
-        return redirect(url_for("main.destination_details"))
+            return jsonify(success=False, message=f'Failed to start remote migration: {e}'), 500
+        flash(f'Failed to start remote migration: {e}', 'error')
+        return redirect(url_for('main.destination_details'))
 
-    return redirect(url_for("main.migration_summary"))
+    # If AJAX, return JSON with redirect to migration summary with job_id
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(success=True, job_id=job_id, redirect_url=url_for('main.migration_summary') + f'?job_id={job_id}')
 
+    # Non-AJAX: redirect to migration_summary with job_id
+    return redirect(url_for('main.migration_summary', job_id=job_id))
 
 @bp.route("/migration-summary", methods=["GET"])
 def migration_summary():
@@ -410,4 +411,24 @@ def migration_status(job_id):
         return jsonify(success=False, message='Job not found'), 404
     except Exception as e:
         return jsonify(success=False, message=str(e)), 500
+
+
+@bp.route('/download-log/<job_id>', methods=['GET'])
+def download_log(job_id):
+    """Return the logs for a job as a downloadable text file."""
+    try:
+        job = get_job_status(job_id)
+    except SSHRunnerError:
+        flash('Job not found', 'error')
+        return redirect(url_for('main.migration_summary'))
+
+    logs = job.get('logs', [])
+    content = '\n'.join(logs)
+    from flask import Response
+    filename = f'migration_{job_id}.log'
+    headers = {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Disposition': f'attachment; filename="{filename}"'
+    }
+    return Response(content, headers=headers)
 

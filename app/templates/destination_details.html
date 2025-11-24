@@ -25,20 +25,20 @@
           <input class="input-field" name="host" required placeholder="e.g., 192.168.1.100">
         </div>
         <div class="form-group">
-          <label>Username</label>
-          <input class="input-field" name="username" required placeholder="e.g., root@pam">
+          <label>SSH_Username</label>
+          <input class="input-field" name="username" required placeholder="e.g., root">
         </div>
         <div class="form-group">
-          <label>Password</label>
-          <input class="input-field" name="password" type="password" required placeholder="Enter password">
+          <label>SSH_Password</label>
+          <input class="input-field" name="password" type="password" required placeholder="Enter SSH password">
         </div>
         <div class="form-group">
-          <label>Port (optional, default: 8006)</label>
-          <input class="input-field" name="port" type="number" value="8006">
+          <label>Port (optional)</label>
+          <input class="input-field" name="port" type="number" value="22">
         </div>
         <div class="form-actions">
           <button type="submit" class="btn-primary" id="connect-button">
-            <span class="button-text">Connect to Proxmox</span>
+            <span class="button-text">Start Remote Execution</span>
             <i class="fas fa-spinner fa-spin" style="display: none;"></i>
           </button>
           <a href="{{ url_for('main.start_migration') }}" class="link-btn">Back</a>
@@ -60,14 +60,14 @@
 
       // Show spinner, disable button
       spinner.style.display = 'inline-block';
-      text.textContent = 'Connecting...';
+      text.textContent = 'Starting...';
       button.disabled = true;
 
       // Prepare form data
       const data = new FormData(form);
 
       try {
-        console.log('Submitting Proxmox connection form to:', form.action);
+        console.log('Submitting SSH start form to:', form.action);
         const resp = await fetch(form.action, {
           method: 'POST',
           body: data,
@@ -86,7 +86,7 @@
           console.error('Connection error:', errorMsg);
           alert(errorMsg);
           spinner.style.display = 'none';
-          text.textContent = 'Connect to Proxmox';
+          text.textContent = 'Start Remote Execution';
           button.disabled = false;
           return;
         }
@@ -95,7 +95,7 @@
         console.log('Connection successful, showing green button');
         button.classList.remove('btn-primary');
         button.classList.add('btn-success');
-        text.textContent = 'Connected';
+        text.textContent = 'Started';
         spinner.style.display = 'none';
 
         // brief delay so user sees the green state

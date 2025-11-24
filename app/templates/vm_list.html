@@ -23,7 +23,7 @@
           {% for vm in vms %}
             <tr>
               <td style="text-align: center;">
-                <input type="radio" name="selected_vm" value="{{ loop.index }}" id="vm_{{ loop.index }}" class="vm-radio">
+                <input type="radio" name="selected_vm" value="{{ loop.index }}" id="vm_{{ loop.index }}" class="vm-radio" {% if selected_serials and (loop.index in selected_serials) %}checked{% endif %}>
               </td>
               <td>{{ loop.index }}</td>
               <td>{{ vm.name }}</td>

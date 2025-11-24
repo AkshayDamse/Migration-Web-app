@@ -48,6 +48,10 @@
       <a href="{{ url_for('main.destination_details') }}" class="link-btn">Back</a>
     </div>
 
+    <div style="margin-top:1rem;">
+      <a id="download-link" class="link-btn" style="display:none;" href="#">Download Logs</a>
+    </div>
+
     <div class="page-card" style="margin-top: 1rem;">
       <h3>Live Migration Logs</h3>
       <div id="migration-logs" style="white-space: pre-wrap; background:#111; color:#0f0; padding:1rem; height:300px; overflow:auto; font-family: monospace; font-size:12px; border-radius:4px;"></div>
@@ -55,7 +59,9 @@
   </div>
 
   <script>
-    let currentJob = null;
+    // Try to pick up job_id from query param first
+    const params = new URLSearchParams(window.location.search);
+    let currentJob = params.get('job_id') || null;
     async function startMigration() {
       const btn = document.getElementById('start-btn');
       const logsEl = document.getElementById('migration-logs');
@@ -74,6 +80,11 @@
 
         currentJob = json.job_id;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+
+        // show download link
+        const dl = document.getElementById('download-link');
+        dl.style.display = 'inline-block';
+        dl.href = '{{ url_for("main.download_log", job_id="") }}' + currentJob;
 
         // Poll logs
         const poll = setInterval(async () => {
@@ -98,6 +109,13 @@
           }
         }, 1500);
 
+        // ensure download link visible even if job created before
+        const dl2 = document.getElementById('download-link');
+        if (currentJob) {
+          dl2.style.display = 'inline-block';
+          dl2.href = '{{ url_for("main.download_log", job_id="") }}' + currentJob;
+        }
+        
       } catch (err) {
         alert('Error starting migration: ' + err.message);
         btn.disabled = false;

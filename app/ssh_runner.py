@@ -30,7 +30,7 @@ class SSHRunnerError(Exception):
     pass
 
 
-def start_remote_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root') -> str:
+def start_remote_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', local_script: str ='mscripty.py') -> str:
     """Start a background job that uploads and runs the migration script on remote host.
 
     Returns a job id that can be polled using `get_job_status(job_id)`.
@@ -58,10 +58,23 @@ def start_remote_migration(host: str, username: str, password: str, port: int = 
             logs.append("SSH connection established.")
 
             sftp = client.open_sftp()
-            local_script = os.path.join(os.getcwd(), 'app', 'esxi_to_proxmox_migration.py')
-            remote_script = os.path.join(remote_path, 'esxi_to_proxmox_migration.py')
-            logs.append(f"Uploading {local_script} to {remote_script}...")
-            sftp.put(local_script, remote_script)
+            # local_script = os.path.join(os.getcwd(), 'app', 'esxi_to_proxmox_migration.py')
+            # remote_script = os.path.join(remote_path, 'esxi_to_proxmox_migration.py')
+            # logs.append(f"Uploading {local_script} to {remote_script}...")
+            # sftp.put(local_script, remote_script)
+            # Allow passing an explicit local script path (relative to project root)
+            local_script_path = os.path.join(os.getcwd(), local_script)
+            if not os.path.exists(local_script_path):
+                # Fallback: try the bundled migration script inside app/
+                fallback = os.path.join(os.getcwd(), 'app', 'esxi_to_proxmox_migration.py')
+                if os.path.exists(fallback):
+                    logs.append(f"Local script not found at {local_script_path}, falling back to {fallback}")
+                    local_script_path = fallback
+                else:
+                    raise SSHRunnerError(f"Local script not found: {local_script_path}")
+            remote_script = os.path.join(remote_path, os.path.basename(local_script))
+            logs.append(f"Uploading {local_script_path} to {remote_script}...")
+            sftp.put(local_script_path, remote_script)
             sftp.chmod(remote_script, 0o755)
             sftp.close()
             logs.append("Upload complete.")
