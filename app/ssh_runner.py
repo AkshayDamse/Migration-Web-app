@@ -30,9 +30,10 @@ class SSHRunnerError(Exception):
     pass
 
 
-def start_remote_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', local_script: str ='mscripty.py') -> str:
+def start_remote_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', local_script: str = 'app/mscript.py', config_path: str = 'app/config.json') -> str:
     """Start a background job that uploads and runs the migration script on remote host.
-
+    
+    Uploads both the script and the config.json, execute the script, then clean up both files.
     Returns a job id that can be polled using `get_job_status(job_id)`.
     """
     if paramiko is None:
@@ -50,6 +51,7 @@ def start_remote_migration(host: str, username: str, password: str, port: int = 
     def _run():
         JOBS[job_id]['status'] = 'running'
         logs = JOBS[job_id]['logs']
+        client = None
         try:
             logs.append(f"Connecting to {host}:{port} as {username}...")
             client = paramiko.SSHClient()
@@ -58,11 +60,8 @@ def start_remote_migration(host: str, username: str, password: str, port: int = 
             logs.append("SSH connection established.")
 
             sftp = client.open_sftp()
-            # local_script = os.path.join(os.getcwd(), 'app', 'esxi_to_proxmox_migration.py')
-            # remote_script = os.path.join(remote_path, 'esxi_to_proxmox_migration.py')
-            # logs.append(f"Uploading {local_script} to {remote_script}...")
-            # sftp.put(local_script, remote_script)
-            # Allow passing an explicit local script path (relative to project root)
+           
+            # Upload migration script         
             local_script_path = os.path.join(os.getcwd(), local_script)
             if not os.path.exists(local_script_path):
                 # Fallback: try the bundled migration script inside app/
@@ -76,11 +75,22 @@ def start_remote_migration(host: str, username: str, password: str, port: int = 
             logs.append(f"Uploading {local_script_path} to {remote_script}...")
             sftp.put(local_script_path, remote_script)
             sftp.chmod(remote_script, 0o755)
+
+            # Upload config.json
+            config_local_path = os.path.join(os.getcwd(), config_path)
+            if os.path.exists(config_local_path):
+                remote_config = os.path.join(remote_path, 'config.json')
+                logs.append(f"Uploading {config_local_path} to {remote_config}...")
+                sftp.put(config_local_path, remote_config)
+                logs.append("Config upload complete.")
+            else:
+                logs.append(f"Warning: config.json not found at {config_local_path}, skipping upload.")
+
             sftp.close()
             logs.append("Upload complete.")
 
             # Execute the script; ensure python3 is used
-            cmd = f'python3 {remote_script} '
+            cmd = f'python3 {remote_script}'
             logs.append(f"Executing: {cmd}")
             stdin, stdout, stderr = client.exec_command(cmd)
 
@@ -101,11 +111,51 @@ def start_remote_migration(host: str, username: str, password: str, port: int = 
             JOBS[job_id]['finished_at'] = time.time()
             logs.append(f"Remote script exited with code {exit_status}")
 
+            # Cleanup: delete uploaded files from remote
+            try:
+                sftp2 = client.open_sftp()
+                remote_script_path = os.path.join(remote_path, os.path.basename(local_script))
+                remote_config_path = os.path.join(remote_path, 'config.json')
+                
+                try:
+                    sftp2.remove(remote_script_path)
+                    logs.append(f"Deleted remote script: {remote_script_path}")
+                except Exception as e:
+                    logs.append(f"Warning: could not delete {remote_script_path}: {e}")
+                
+                try:
+                    sftp2.remove(remote_config_path)
+                    logs.append(f"Deleted remote config: {remote_config_path}")
+                except Exception as e:
+                    logs.append(f"Warning: could not delete {remote_config_path}: {e}")
+                
+                sftp2.close()
+            except Exception as e:
+                logs.append(f"Warning: cleanup failed: {e}")
+
             client.close()
         except Exception as e:
             JOBS[job_id]['status'] = 'failed'
             JOBS[job_id]['finished_at'] = time.time()
             logs.append(f"Exception: {e}")
+            if client:
+                try:
+                    # Attempt cleanup even on failure
+                    sftp_cleanup = client.open_sftp()
+                    remote_script_path = os.path.join(remote_path, os.path.basename(local_script))
+                    remote_config_path = os.path.join(remote_path, 'config.json')
+                    try:
+                        sftp_cleanup.remove(remote_script_path)
+                    except Exception:
+                        pass
+                    try:
+                        sftp_cleanup.remove(remote_config_path)
+                    except Exception:
+                        pass
+                    sftp_cleanup.close()
+                except Exception:
+                    pass
+                client.close()
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
