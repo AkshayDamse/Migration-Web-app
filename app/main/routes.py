@@ -338,7 +338,7 @@ def connect_destination():
         return redirect(url_for('main.destination_details'))
 
     try:
-        job_id = start_remote_migration(host, username, password, port=int(port), remote_path='/root', local_script='mscript.py', config_path='app/config.json')
+        job_id = start_remote_migration(host, username, password, port=int(port), remote_path='/root', local_script='app/mscript.py', config_path='app/config.json')
     except SSHRunnerError as e:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify(success=False, message=str(e)), 500
