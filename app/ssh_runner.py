@@ -16,6 +16,7 @@ import uuid
 import time
 import os
 import io
+import posixpath
 from typing import Dict, Any
 
 try:
@@ -30,10 +31,10 @@ class SSHRunnerError(Exception):
     pass
 
 
-def start_remote_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', local_script: str = 'app/mscript.py', config_path: str = 'app/config.json') -> str:
+def start_remote_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', 
+                           local_script: str =r'\User\oranlab\Desktop\Development\Migration-Web-app-main\Migration-Web-app-main\app\mscript.py', config_path: str = r'\User\oranlab\Desktop\Development\Migration-Web-app-main\Migration-Web-app-main\app\config.json') -> str:
     """Start a background job that uploads and runs the migration script on remote host.
     
-    Uploads both the script and the config.json, execute the script, then clean up both files.
     Returns a job id that can be polled using `get_job_status(job_id)`.
     """
     if paramiko is None:
@@ -65,13 +66,13 @@ def start_remote_migration(host: str, username: str, password: str, port: int = 
             local_script_path = os.path.join(os.getcwd(), local_script)
             if not os.path.exists(local_script_path):
                 # Fallback: try the bundled migration script inside app/
-                fallback = os.path.join(os.getcwd(), 'app', 'esxi_to_proxmox_migration.py')
+                fallback = os.path.join(os.getcwd(), 'app', 'mscript.py')
                 if os.path.exists(fallback):
                     logs.append(f"Local script not found at {local_script_path}, falling back to {fallback}")
                     local_script_path = fallback
                 else:
                     raise SSHRunnerError(f"Local script not found: {local_script_path}")
-            remote_script = os.path.join(remote_path, os.path.basename(local_script))
+            remote_script = posixpath.join(remote_path, os.path.basename(local_script))
             logs.append(f"Uploading {local_script_path} to {remote_script}...")
             sftp.put(local_script_path, remote_script)
             sftp.chmod(remote_script, 0o755)
@@ -79,18 +80,18 @@ def start_remote_migration(host: str, username: str, password: str, port: int = 
             # Upload config.json
             config_local_path = os.path.join(os.getcwd(), config_path)
             if os.path.exists(config_local_path):
-                remote_config = os.path.join(remote_path, 'config.json')
+                remote_config = posixpath.join(remote_path, 'config.json')
                 logs.append(f"Uploading {config_local_path} to {remote_config}...")
                 sftp.put(config_local_path, remote_config)
-                logs.append("Config upload complete.")
+                logs.append("Config upload complete")
             else:
-                logs.append(f"Warning: config.json not found at {config_local_path}, skipping upload.")
+                logs.append(f"Warning: Config.json not found at {config_local_path}, skipping upload.")
 
             sftp.close()
             logs.append("Upload complete.")
 
             # Execute the script; ensure python3 is used
-            cmd = f'python3 {remote_script}'
+            cmd = f'python3 -u {remote_script}'
             logs.append(f"Executing: {cmd}")
             stdin, stdout, stderr = client.exec_command(cmd)
 
