@@ -32,7 +32,7 @@ class SSHRunnerError(Exception):
 
 
 def start_remote_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', 
-                           local_script: str =r'\User\oranlab\Desktop\Development\Migration-Web-app-main\Migration-Web-app-main\app\mscript.py', config_path: str = r'\User\oranlab\Desktop\Development\Migration-Web-app-main\Migration-Web-app-main\app\config.json') -> str:
+                           local_script: str =r'\Users\oranlab\Desktop\Development\Migration-Web-app-main\Migration-Web-app-main\app\mscript.py', config_path: str = r'\Users\oranlab\Desktop\Development\Migration-Web-app-main\Migration-Web-app-main\app\config.json') -> str:
     """Start a background job that uploads and runs the migration script on remote host.
     
     Returns a job id that can be polled using `get_job_status(job_id)`.
