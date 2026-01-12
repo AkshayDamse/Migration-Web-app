@@ -21,6 +21,14 @@ except ImportError:
     update_esxi_config = None
     update_selected_vms = None
 
+# Import KVM migration config updater
+try:
+    from ..kvm_migration import update_esxi_config as update_esxi_config_kvm, update_selected_vms as update_selected_vms_kvm, update_kvm_config
+except ImportError:
+    update_esxi_config_kvm = None
+    update_selected_vms_kvm = None
+    update_kvm_config = None
+
 # Import Proxmox client (optional) and SSH runner
 try:
     from ..proxmox.client import verify_proxmox_credentials, ProxmoxConnectionError
@@ -28,6 +36,7 @@ except ImportError:
     verify_proxmox_credentials = None
     ProxmoxConnectionError = None
 
+# Import Proxmox SSH runner
 try:
     from ..ssh_runner import start_remote_migration, get_job_status, SSHRunnerError
 except ImportError:
@@ -35,11 +44,25 @@ except ImportError:
     get_job_status = None
     SSHRunnerError = None
 
+# Import KVM SSH runner
+try:
+    from ..kssh_runner import start_remote_migration as start_kvm_migration, get_job_status as get_kvm_job_status, SSHRunnerError as KSSHRunnerError
+except ImportError:
+    start_kvm_migration = None
+    get_kvm_job_status = None
+    KSSHRunnerError = None
+
 # Migration module (to read current selected_vms state)
 try:
     from .. import esxi_to_proxmox_migration as migration_mod
 except Exception:
     migration_mod = None
+
+# KVM migration module
+try:
+    from .. import kvm_migration as kvm_migration_mod
+except Exception:
+    kvm_migration_mod = None
 
 @bp.route("/")
 def index():
@@ -280,7 +303,7 @@ def destination_details():
 
 @bp.route("/connect-destination", methods=["POST"])
 def connect_destination():
-    """Attempt to connect to the destination Proxmox platform using password authentication."""
+    """Attempt to connect to the destination platform (Proxmox or KVM) using password authentication."""
     import sys
     
     print(f"[ROUTE] /connect-destination called", file=sys.stderr)
@@ -291,8 +314,8 @@ def connect_destination():
         return redirect(url_for("main.index"))
 
     destination = platforms["destination"]
-    if destination != "proxmox":
-        msg = "Only Proxmox destination is implemented."
+    if destination not in ["proxmox", "kvm"]:
+        msg = "Only Proxmox and KVM destinations are supported."
         print(f"[ROUTE] Wrong destination: {destination}", file=sys.stderr)
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify(success=False, message=msg), 400
@@ -305,11 +328,11 @@ def connect_destination():
     password = request.form.get("password", "")
     port = request.form.get("port", "22").strip()
 
-    print(f"[ROUTE] SSH Form data - host={host}, username={username}, port={port}", file=sys.stderr)
+    print(f"[ROUTE] SSH Form data - host={host}, username={username}, port={port}, destination={destination}", file=sys.stderr)
 
     # Validate inputs
     if not host or not username or not password:
-        msg = "Provide host, username, and password for SSH."
+        msg = f"Provide host, username, and password for SSH to {destination}."
         print(f"[ROUTE] Missing inputs", file=sys.stderr)
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify(success=False, message=msg), 400
@@ -329,26 +352,59 @@ def connect_destination():
     session['authenticated_destination'] = True
     session.modified = True
 
-    # Start remote migration immediately via SSH using paramiko
-    if not start_remote_migration:
-        msg = 'SSH runner not available (paramiko missing)'
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify(success=False, message=msg), 500
-        flash(msg, 'error')
-        return redirect(url_for('main.destination_details'))
+    # ✓ UPDATE CONFIG based on destination platform
+    if destination == "kvm":
+        if update_kvm_config:
+            update_kvm_config(host, username, password)
+            print(f"[INFO] KVM configuration updated: {host}")
+        
+        # Use KVM runner if available
+        if not start_kvm_migration:
+            msg = 'KVM SSH runner not available (kssh_runner missing)'
+            print(f"[ROUTE] KVM runner not available", file=sys.stderr)
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify(success=False, message=msg), 500
+            flash(msg, 'error')
+            return redirect(url_for('main.destination_details'))
 
-    try:
-        job_id = start_remote_migration(host, username, password, port=int(port), remote_path='/root', local_script='app/mscript.py', config_path='app/config.json')
-    except SSHRunnerError as e:
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify(success=False, message=str(e)), 500
-        flash(str(e), 'error')
-        return redirect(url_for('main.destination_details'))
-    except Exception as e:
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify(success=False, message=f'Failed to start remote migration: {e}'), 500
-        flash(f'Failed to start remote migration: {e}', 'error')
-        return redirect(url_for('main.destination_details'))
+        try:
+            job_id = start_kvm_migration(host, username, password, port=int(port), remote_path='/root', local_script='app/kvm_migration.py', config_path='app/config.json')
+        except KSSHRunnerError as e:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify(success=False, message=str(e)), 500
+            flash(str(e), 'error')
+            return redirect(url_for('main.destination_details'))
+        except Exception as e:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify(success=False, message=f'Failed to start KVM migration: {e}'), 500
+            flash(f'Failed to start KVM migration: {e}', 'error')
+            return redirect(url_for('main.destination_details'))
+    else:  # proxmox
+        if update_esxi_config:
+            update_esxi_config(host, username, password)
+            print(f"[INFO] Proxmox configuration updated: {host}")
+        
+        # Use Proxmox runner
+        if not start_remote_migration:
+            msg = 'SSH runner not available (paramiko missing)'
+            print(f"[ROUTE] Proxmox runner not available", file=sys.stderr)
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify(success=False, message=msg), 500
+            flash(msg, 'error')
+            return redirect(url_for('main.destination_details'))
+
+        try:
+            job_id = start_remote_migration(host, username, password, port=int(port), remote_path='/root', local_script='app/mscript.py', config_path='app/config.json')
+        except SSHRunnerError as e:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify(success=False, message=str(e)), 500
+            flash(str(e), 'error')
+            return redirect(url_for('main.destination_details'))
+        except Exception as e:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify(success=False, message=f'Failed to start Proxmox migration: {e}'), 500
+            flash(f'Failed to start Proxmox migration: {e}', 'error')
+            return redirect(url_for('main.destination_details'))
 
     # If AJAX, return JSON with redirect to migration summary with job_id
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
