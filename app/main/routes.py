@@ -419,17 +419,20 @@ def migration_summary():
     # Check if we have all required information
     source_vms = session.get('last_vm_list')
     dest_host = session.get('destination_host')
+    platforms = session.get('platforms')
     
     if not source_vms or not dest_host:
         flash("Missing required information. Please start from the beginning.", "error")
         return redirect(url_for("main.index"))
 
     auth_flag = session.pop('authenticated_destination', False)
+    destination_platform = platforms.get('destination', 'proxmox') if platforms else 'proxmox'
     
     return render_template(
         'migration_summary.html',
         source_vms=source_vms,
         destination_host=dest_host,
+        destination_platform=destination_platform,
         authenticated=auth_flag
     )
 
