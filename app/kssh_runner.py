@@ -32,8 +32,8 @@ class SSHRunnerError(Exception):
     pass
 
 
-def start_remote_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', 
-                           local_script: str = 'app/kvm_migration.py', config_path: str = 'app/config.json') -> str:
+def start_kvm_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', 
+                        local_script: str = 'app/kvm_migration.py', config_path: str = 'app/config.json') -> str:
     """Start a background job that uploads and runs the KVM migration script on remote host.
     
     Returns a job id that can be polled using `get_job_status(job_id)`.

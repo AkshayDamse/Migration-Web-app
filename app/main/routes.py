@@ -46,7 +46,7 @@ except ImportError:
 
 # Import KVM SSH runner
 try:
-    from ..kssh_runner import start_remote_migration as start_kvm_migration, get_job_status as get_kvm_job_status, SSHRunnerError as KSSHRunnerError
+    from ..kssh_runner import start_kvm_migration, get_job_status as get_kvm_job_status, SSHRunnerError as KSSHRunnerError
 except ImportError:
     start_kvm_migration = None
     get_kvm_job_status = None
@@ -314,6 +314,8 @@ def connect_destination():
         return redirect(url_for("main.index"))
 
     destination = platforms["destination"]
+    print(f"[ROUTE] destination from platforms dict: {destination}", file=sys.stderr)
+    
     if destination not in ["proxmox", "kvm"]:
         msg = "Only Proxmox and KVM destinations are supported."
         print(f"[ROUTE] Wrong destination: {destination}", file=sys.stderr)
@@ -349,8 +351,15 @@ def connect_destination():
     session['destination_user'] = username
     session['destination_pass'] = password
     session['destination_port'] = port
+    session['destination_platform'] = destination  # Store destination platform separately
     session['authenticated_destination'] = True
     session.modified = True
+    
+    print(f"[ROUTE] After storing in /connect-destination:", file=sys.stderr)
+    print(f"[ROUTE]   destination variable: {destination}", file=sys.stderr)
+    print(f"[ROUTE]   session['destination_platform']: {session.get('destination_platform')}", file=sys.stderr)
+    print(f"[ROUTE]   session.modified: {session.modified}", file=sys.stderr)
+    print(f"[ROUTE]   Full session: {dict(session)}", file=sys.stderr)
 
     # ✓ UPDATE CONFIG based on destination platform
     if destination == "kvm":
@@ -416,17 +425,29 @@ def connect_destination():
 @bp.route("/migration-summary", methods=["GET"])
 def migration_summary():
     """Show migration summary with both source and destination details."""
+    import sys
+    
+    print(f"[ROUTE] /migration-summary called", file=sys.stderr)
+    print(f"[ROUTE] ALL session data: {dict(session)}", file=sys.stderr)
+    
     # Check if we have all required information
     source_vms = session.get('last_vm_list')
     dest_host = session.get('destination_host')
-    platforms = session.get('platforms')
+    dest_platform_session = session.get('destination_platform')
+    
+    print(f"[ROUTE] source_vms: {source_vms is not None}", file=sys.stderr)
+    print(f"[ROUTE] dest_host: {dest_host}", file=sys.stderr)
+    print(f"[ROUTE] destination_platform from session: {dest_platform_session}", file=sys.stderr)
     
     if not source_vms or not dest_host:
         flash("Missing required information. Please start from the beginning.", "error")
         return redirect(url_for("main.index"))
 
     auth_flag = session.pop('authenticated_destination', False)
-    destination_platform = platforms.get('destination', 'proxmox') if platforms else 'proxmox'
+    
+    # Use destination_platform from session (stored in /connect-destination)
+    destination_platform = session.get('destination_platform', 'proxmox')
+    print(f"[ROUTE] FINAL destination_platform being passed to template: {destination_platform}", file=sys.stderr)
     
     return render_template(
         'migration_summary.html',
@@ -441,21 +462,42 @@ def migration_summary():
 def start_remote_migration_route():
     """Start remote migration by uploading and running the script via SSH.
 
-    This reads Proxmox SSH creds from session (destination_host, destination_user, destination_pass)
-    and starts a background job. Returns a job id for polling.
+    This reads SSH creds from session (destination_host, destination_user, destination_pass)
+    and starts a background job. Routes to the appropriate SSH runner based on destination platform.
+    Returns a job id for polling.
     """
+    import sys
+    
     host = session.get('destination_host')
     user = session.get('destination_user')
     password = session.get('destination_pass')
     port = session.get('destination_port', 22)
+    # Get destination platform from session (stored in /connect-destination)
+    destination = session.get('destination_platform', 'proxmox')
+    
+    print(f"[ROUTE] /start-remote-migration - destination_platform from session: {destination}", file=sys.stderr)
+    print(f"[ROUTE] Full session keys: {list(session.keys())}", file=sys.stderr)
+    print(f"[ROUTE] destination_platform value: {session.get('destination_platform')}", file=sys.stderr)
 
     if not host or not user or not password:
         return jsonify(success=False, message='Missing destination SSH credentials. Connect first.'), 400
 
     try:
-        job_id = start_remote_migration(host, user, password, port=int(port), remote_path='/root')
+        # Route to appropriate SSH runner based on destination platform
+        if destination == 'kvm':
+            print(f"[ROUTE] Routing to KVM migration", file=sys.stderr)
+            if not start_kvm_migration:
+                return jsonify(success=False, message='KVM SSH runner not available'), 500
+            job_id = start_kvm_migration(host, user, password, port=int(port), remote_path='/root', local_script='app/kvm_migration.py', config_path='app/config.json')
+        else:  # proxmox
+            print(f"[ROUTE] Routing to Proxmox migration", file=sys.stderr)
+            if not start_remote_migration:
+                return jsonify(success=False, message='Proxmox SSH runner not available'), 500
+            job_id = start_remote_migration(host, user, password, port=int(port), remote_path='/root', local_script='app/mscript.py', config_path='app/config.json')
         return jsonify(success=True, job_id=job_id)
     except SSHRunnerError as e:
+        return jsonify(success=False, message=str(e)), 500
+    except KSSHRunnerError as e:
         return jsonify(success=False, message=str(e)), 500
     except Exception as e:
         return jsonify(success=False, message=f'Failed to start remote migration: {e}'), 500
