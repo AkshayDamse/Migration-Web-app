@@ -507,9 +507,17 @@ def start_remote_migration_route():
 @bp.route('/migration-status/<job_id>', methods=['GET'])
 def migration_status(job_id):
     try:
-        job = get_job_status(job_id)
-        return jsonify(success=True, job=job)
+        # Try Proxmox first
+        try:
+            job = get_job_status(job_id)
+            return jsonify(success=True, job=job)
+        except SSHRunnerError:
+            # If not found in Proxmox, try KVM
+            job = get_kvm_job_status(job_id)
+            return jsonify(success=True, job=job)
     except SSHRunnerError:
+        return jsonify(success=False, message='Job not found'), 404
+    except KSSHRunnerError:
         return jsonify(success=False, message='Job not found'), 404
     except Exception as e:
         return jsonify(success=False, message=str(e)), 500
