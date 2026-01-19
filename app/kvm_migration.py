@@ -16,13 +16,20 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 # DEFAULT CONFIGURATION FOR KVM
 # ============================================================================
 DEFAULT_CONFIG = {
-    "esxi_host": "192.168.203.74",
-    "esxi_user": "root",
-    "esxi_pass": "India@123",
-    "kvm_host": "",
-    "kvm_user": "",
-    "kvm_pass": "",
-    "kvm_storage_pool": "/var/lib/libvirt/images",
+    "source": {
+        "esxi_host": "192.168.203.74",
+        "esxi_user": "root",
+        "esxi_pass": "India@123"
+    },
+    "destination": {
+        "proxmox_host": "",
+        "proxmox_user": "",
+        "proxmox_pass": "",
+        "kvm_host": "",
+        "kvm_user": "",
+        "kvm_pass": "",
+        "kvm_storage_pool": ""
+    },
     "export_root": "./exports",
     "selected_vms": []
 }
@@ -59,13 +66,20 @@ def _save_config(config):
 _current_config = _load_config()
 
 # Expose config values as module-level variables (for backward compatibility)
-ESXI_HOST = _current_config.get('esxi_host', DEFAULT_CONFIG['esxi_host'])
-ESXI_USER = _current_config.get('esxi_user', DEFAULT_CONFIG['esxi_user'])
-ESXI_PASS = _current_config.get('esxi_pass', DEFAULT_CONFIG['esxi_pass'])
-KVM_HOST = _current_config.get('kvm_host', DEFAULT_CONFIG['kvm_host'])
-KVM_USER = _current_config.get('kvm_user', DEFAULT_CONFIG['kvm_user'])
-KVM_PASS = _current_config.get('kvm_pass', DEFAULT_CONFIG['kvm_pass'])
-KVM_STORAGE_POOL = _current_config.get('kvm_storage_pool', DEFAULT_CONFIG['kvm_storage_pool'])
+# Source (ESXi)
+source = _current_config.get('source', DEFAULT_CONFIG['source'])
+ESXI_HOST = source.get('esxi_host', DEFAULT_CONFIG['source']['esxi_host'])
+ESXI_USER = source.get('esxi_user', DEFAULT_CONFIG['source']['esxi_user'])
+ESXI_PASS = source.get('esxi_pass', DEFAULT_CONFIG['source']['esxi_pass'])
+
+# Destination (KVM)
+destination = _current_config.get('destination', DEFAULT_CONFIG['destination'])
+KVM_HOST = destination.get('kvm_host', DEFAULT_CONFIG['destination']['kvm_host'])
+KVM_USER = destination.get('kvm_user', DEFAULT_CONFIG['destination']['kvm_user'])
+KVM_PASS = destination.get('kvm_pass', DEFAULT_CONFIG['destination']['kvm_pass'])
+KVM_STORAGE_POOL = destination.get('kvm_storage_pool', DEFAULT_CONFIG['destination']['kvm_storage_pool'])
+
+# Other
 EXPORT_ROOT = _current_config.get('export_root', DEFAULT_CONFIG['export_root'])
 sel = _current_config.get('selected_vms', DEFAULT_CONFIG['selected_vms'])
 
@@ -75,15 +89,23 @@ sel = _current_config.get('selected_vms', DEFAULT_CONFIG['selected_vms'])
 # ============================================================================
 def load_config():
     """Reload configuration from disk (call before using config values)."""
-    global ESXI_HOST, ESXI_USER, ESXI_PASS, KVM_HOST, KVM_USER, KVM_PASS, KVM_STORAGE_POOL, EXPORT_ROOT, sel, _current_config
+    global ESXI_HOST, ESXI_USER, ESXI_PASS, KVM_HOST, KVM_USER, KVM_PASS, KVM_STORAGE_POOL, EXPORT_ROOT, sel, _current_config, source, destination
     _current_config = _load_config()
-    ESXI_HOST = _current_config.get('esxi_host', DEFAULT_CONFIG['esxi_host'])
-    ESXI_USER = _current_config.get('esxi_user', DEFAULT_CONFIG['esxi_user'])
-    ESXI_PASS = _current_config.get('esxi_pass', DEFAULT_CONFIG['esxi_pass'])
-    KVM_HOST = _current_config.get('kvm_host', DEFAULT_CONFIG['kvm_host'])
-    KVM_USER = _current_config.get('kvm_user', DEFAULT_CONFIG['kvm_user'])
-    KVM_PASS = _current_config.get('kvm_pass', DEFAULT_CONFIG['kvm_pass'])
-    KVM_STORAGE_POOL = _current_config.get('kvm_storage_pool', DEFAULT_CONFIG['kvm_storage_pool'])
+    
+    # Load source (ESXi) config
+    source = _current_config.get('source', DEFAULT_CONFIG['source'])
+    ESXI_HOST = source.get('esxi_host', DEFAULT_CONFIG['source']['esxi_host'])
+    ESXI_USER = source.get('esxi_user', DEFAULT_CONFIG['source']['esxi_user'])
+    ESXI_PASS = source.get('esxi_pass', DEFAULT_CONFIG['source']['esxi_pass'])
+    
+    # Load destination (KVM) config
+    destination = _current_config.get('destination', DEFAULT_CONFIG['destination'])
+    KVM_HOST = destination.get('kvm_host', DEFAULT_CONFIG['destination']['kvm_host'])
+    KVM_USER = destination.get('kvm_user', DEFAULT_CONFIG['destination']['kvm_user'])
+    KVM_PASS = destination.get('kvm_pass', DEFAULT_CONFIG['destination']['kvm_pass'])
+    KVM_STORAGE_POOL = destination.get('kvm_storage_pool', DEFAULT_CONFIG['destination']['kvm_storage_pool'])
+    
+    # Load other config
     EXPORT_ROOT = _current_config.get('export_root', DEFAULT_CONFIG['export_root'])
     sel = _current_config.get('selected_vms', DEFAULT_CONFIG['selected_vms'])
 
@@ -94,7 +116,8 @@ def load_config():
 
 def update_esxi_config(host, user, password):
     """
-    Update ESXi source configuration in config.json.
+    Update ESXi source configuration in config.json (for KVM flow).
+    Updates ONLY the 'source' section. Does NOT touch 'destination' or 'selected_vms'.
     
     Args:
         host (str): ESXi host IP/hostname
@@ -104,14 +127,20 @@ def update_esxi_config(host, user, password):
     Returns:
         bool: True if successful, False otherwise
     """
-    global ESXI_HOST, ESXI_USER, ESXI_PASS, _current_config
+    global ESXI_HOST, ESXI_USER, ESXI_PASS, _current_config, source
     _current_config = _load_config()
-    _current_config['esxi_host'] = host
-    _current_config['esxi_user'] = user
-    _current_config['esxi_pass'] = password
+    
+    # Ensure source object exists
+    if 'source' not in _current_config:
+        _current_config['source'] = DEFAULT_CONFIG['source'].copy()
+    
+    _current_config['source']['esxi_host'] = host
+    _current_config['source']['esxi_user'] = user
+    _current_config['source']['esxi_pass'] = password
     
     result = _save_config(_current_config)
     if result:
+        source = _current_config['source']
         ESXI_HOST = host
         ESXI_USER = user
         ESXI_PASS = password
@@ -121,6 +150,7 @@ def update_esxi_config(host, user, password):
 def update_kvm_config(host, user, password, storage_pool=None):
     """
     Update KVM destination configuration in config.json.
+    Updates ONLY the 'destination.kvm_*' fields. Does NOT touch 'source' or 'selected_vms'.
     
     Args:
         host (str): KVM host IP/hostname
@@ -131,13 +161,18 @@ def update_kvm_config(host, user, password, storage_pool=None):
     Returns:
         bool: True if successful, False otherwise
     """
-    global KVM_HOST, KVM_USER, KVM_PASS, KVM_STORAGE_POOL, _current_config
+    global KVM_HOST, KVM_USER, KVM_PASS, KVM_STORAGE_POOL, _current_config, destination
     _current_config = _load_config()
-    _current_config['kvm_host'] = host
-    _current_config['kvm_user'] = user
-    _current_config['kvm_pass'] = password
+    
+    # Ensure destination object exists
+    if 'destination' not in _current_config:
+        _current_config['destination'] = DEFAULT_CONFIG['destination'].copy()
+    
+    _current_config['destination']['kvm_host'] = host
+    _current_config['destination']['kvm_user'] = user
+    _current_config['destination']['kvm_pass'] = password
     if storage_pool:
-        _current_config['kvm_storage_pool'] = storage_pool
+        _current_config['destination']['kvm_storage_pool'] = storage_pool
     
     result = _save_config(_current_config)
     if result:

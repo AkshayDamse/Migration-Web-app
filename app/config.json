@@ -1,7 +1,18 @@
 {
-  "esxi_host": "192.168.203.74",
-  "esxi_user": "root",
-  "esxi_pass": "India@123",
+  "source": {
+    "esxi_host": "192.168.203.74",
+    "esxi_user": "root",
+    "esxi_pass": "India@123"
+  },
+  "destination": {
+    "proxmox_host": "",
+    "proxmox_user": "",
+    "proxmox_pass": "",
+    "kvm_host": "",
+    "kvm_user": "",
+    "kvm_pass": "",
+    "kvm_storage_pool": ""
+  },
   "storage": "local-lvm",
   "export_root": "./exports",
   "ovftool": "ovftool",

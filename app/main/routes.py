@@ -16,9 +16,10 @@ from ..vmware.client import list_vms_on_esxi, verify_credentials, VmwareConnecti
 
 # Import the migration script config updater
 try:
-    from ..esxi_to_proxmox_migration import update_esxi_config, update_selected_vms
+    from ..esxi_to_proxmox_migration import update_esxi_config, update_proxmox_config, update_selected_vms
 except ImportError:
     update_esxi_config = None
+    update_proxmox_config = None
     update_selected_vms = None
 
 # Import KVM migration config updater
@@ -389,9 +390,9 @@ def connect_destination():
             flash(f'Failed to start KVM migration: {e}', 'error')
             return redirect(url_for('main.destination_details'))
     else:  # proxmox
-        if update_esxi_config:
-            update_esxi_config(host, username, password)
-            print(f"[INFO] Proxmox configuration updated: {host}")
+        if update_proxmox_config:
+            update_proxmox_config(host, username, password)
+            print(f"[INFO] Proxmox destination configuration updated: {host}")
         
         # Use Proxmox runner
         if not start_remote_migration:
