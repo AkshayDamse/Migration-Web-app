@@ -489,12 +489,12 @@ def start_remote_migration_route():
             print(f"[ROUTE] Routing to KVM migration", file=sys.stderr)
             if not start_kvm_migration:
                 return jsonify(success=False, message='KVM SSH runner not available'), 500
-            job_id = start_kvm_migration(host, user, password, port=int(port), remote_path='/root', local_script='app/kvm_migration.py', config_path='app/config.json')
+            job_id = start_kvm_migration(host, user, password, port=int(port), remote_path='/home/kvmuser')
         else:  # proxmox
             print(f"[ROUTE] Routing to Proxmox migration", file=sys.stderr)
             if not start_remote_migration:
                 return jsonify(success=False, message='Proxmox SSH runner not available'), 500
-            job_id = start_remote_migration(host, user, password, port=int(port), remote_path='/root', local_script='app/mscript.py', config_path='app/config.json')
+            job_id = start_remote_migration(host, user, password, port=int(port), remote_path='/root')
         return jsonify(success=True, job_id=job_id)
     except SSHRunnerError as e:
         return jsonify(success=False, message=str(e)), 500

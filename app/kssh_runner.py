@@ -32,7 +32,7 @@ class SSHRunnerError(Exception):
     pass
 
 
-def start_kvm_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/root', 
+def start_kvm_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/home/kvmuser', 
                         local_script: str = 'app/kvm_migration.py', config_path: str = 'app/config.json') -> str:
     """Start a background job that uploads and runs the KVM migration script on remote host.
     
@@ -91,10 +91,14 @@ def start_kvm_migration(host: str, username: str, password: str, port: int = 22,
             sftp.close()
             logs.append("Upload complete.")
 
-            # Execute the script; ensure python3 is used
-            cmd = f'python3 -u {remote_script}'
-            logs.append(f"Executing: {cmd}")
+            # Execute the script as root using sudo with -S flag to read password from stdin
+            cmd = f'sudo -S python3 -u {remote_script}'
+            logs.append(f"Executing as root: {cmd}")
             stdin, stdout, stderr = client.exec_command(cmd)
+            
+            # Send password for sudo via stdin
+            stdin.write(password + '\n')
+            stdin.flush()
 
             # Stream output
             for line in iter(lambda: stdout.readline(2048), ""):
