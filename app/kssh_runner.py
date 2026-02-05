@@ -117,7 +117,7 @@ def start_kvm_migration(host: str, username: str, password: str, port: int = 22,
             
             if exit_code == 0:
                 logs.append(f"[SUCCESS] KVM migration script exited with code {exit_code}")
-                JOBS[job_id]['status'] = 'completed'
+                JOBS[job_id]['status'] = 'finished'
             else:
                 logs.append(f"[ERROR] KVM migration script exited with code {exit_code}")
                 JOBS[job_id]['status'] = 'failed'
