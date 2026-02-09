@@ -13,7 +13,9 @@
       <table>
         <thead>
           <tr>
-            <th>Select</th>
+            <th style="text-align: center;">
+              <input type="checkbox" id="select-all" title="Select all VMs">
+            </th>
             <th>Sr. No.</th>
             <th>Name</th>
             <th>Instance UUID</th>
@@ -23,7 +25,7 @@
           {% for vm in vms %}
             <tr>
               <td style="text-align: center;">
-                <input type="radio" name="selected_vm" value="{{ loop.index }}" id="vm_{{ loop.index }}" class="vm-radio" {% if selected_serials and (loop.index in selected_serials) %}checked{% endif %}>
+                <input type="checkbox" name="selected_vm" value="{{ loop.index }}" id="vm_{{ loop.index }}" class="vm-checkbox" {% if selected_serials and (loop.index in selected_serials) %}checked{% endif %}>
               </td>
               <td>{{ loop.index }}</td>
               <td>{{ vm.name }}</td>
@@ -33,7 +35,7 @@
         </tbody>
       </table>
       <div class="form-actions" style="margin-top:1.5rem;">
-        <button type="submit" class="btn-primary">Start Migration</button>
+        <button type="submit" class="btn-primary" id="start-migration-btn" disabled>Start Migration</button>
         <a href="{{ url_for('main.index') }}" class="link-btn">Back</a>
       </div>
     </form>
@@ -41,28 +43,75 @@
 
   <!-- No checkboxes, so no JS needed -->
    <script>
-    // When a radio is changed, update config.json via AJAX
-    document.querySelectorAll('.vm-radio').forEach(function(radio){
-      radio.addEventListener('change', async function(e){
-        const serial = e.target.value;
-        try {
-          const resp = await fetch("{{ url_for('main.select_vm') }}", {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ serial: serial })
-          });
-          if (!resp.ok) {
-            const json = await resp.json().catch(()=>({message:'Request failed'}));
-            alert('Failed to save selection: ' + (json.message || resp.statusText));
-          }
-        } catch (err) {
-          console.error('Error updating selected VM:', err);
-          alert('Could not update selected VM: ' + err.message);
+    const selectAllCheckbox = document.getElementById('select-all');
+    const vmCheckboxes = document.querySelectorAll('.vm-checkbox');
+    const startMigrationBtn = document.getElementById('start-migration-btn');
+    
+    // Function to enable/disable submit button based on selection
+    function updateSubmitButton() {
+      const anyChecked = Array.from(vmCheckboxes).some(cb => cb.checked);
+      startMigrationBtn.disabled = !anyChecked;
+    }
+
+    // Function to update the input value with all selected VM indices
+    function updateSelectedVMs() {
+      const selected = Array.from(vmCheckboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+      
+      // Create a hidden input to store selected VMs (will be sent with form)
+      let input = document.getElementById('selected-vm-input');
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'hidden';
+        input.id = 'selected-vm-input';
+        input.name = 'selected_vm';
+        document.getElementById('vm-select-form').appendChild(input);
+      }
+      input.value = selected.join(',');
+      
+      updateSubmitButton();
+      
+      // Save selection via AJAX
+      if (selected.length > 0) {
+        saveSelection(selected);
+      }
+    }
+
+    // Save selected VMs to config via AJAX
+    async function saveSelection(selected) {
+      try {
+        const resp = await fetch("{{ url_for('main.select_vm') }}", {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({ serials: selected })
+        });
+        if (!resp.ok) {
+          const json = await resp.json().catch(() => ({message: 'Request failed'}));
+          console.error('Failed to save selection:', json.message || resp.statusText);
         }
-      });
+      } catch (err) {
+        console.error('Error updating selected VMs:', err);
+      }
+    }
+
+    // Handle individual checkbox changes
+    vmCheckboxes.forEach(function(checkbox) {
+      checkbox.addEventListener('change', updateSelectedVMs);
     });
+
+    // Handle "Select All" checkbox
+    selectAllCheckbox.addEventListener('change', function(e) {
+      vmCheckboxes.forEach(cb => {
+        cb.checked = e.target.checked;
+      });
+      updateSelectedVMs();
+    });
+
+    // Update button state on page load
+    updateSubmitButton();
   </script>
 {% endblock %}

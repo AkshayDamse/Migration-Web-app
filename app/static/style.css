@@ -254,6 +254,29 @@ table thead th {
     margin-left: 0.5rem;
 }
 
+/* Checkbox and selection styles */
+input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+}
+
+/* Highlight selected rows */
+tbody tr:has(input[type="checkbox"]:checked) {
+    background-color: rgba(37, 99, 235, 0.08);
+}
+
+/* Enhanced table row hover */
+tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+/* Select all checkbox in header */
+table thead th:first-child {
+    text-align: center;
+}
+
 @media (max-width: 600px) {
     header h1 { font-size: 1.75rem }
 }
