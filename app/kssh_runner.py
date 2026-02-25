@@ -33,7 +33,7 @@ class SSHRunnerError(Exception):
 
 
 def start_kvm_migration(host: str, username: str, password: str, port: int = 22, remote_path: str = '/home/kvmuser', 
-                        local_script: str = 'app/kvm_migration.py', config_path: str = 'app/config.json') -> str:
+                        local_script: str = r'\Users\oranlab\Desktop\Development\Migration-Web-app-main\Migration-Web-app-main\app\kvm_mig_script.py', config_path: str = r'\Users\oranlab\Desktop\Development\Migration-Web-app-main\Migration-Web-app-main\app\config.json') -> str:
     """Start a background job that uploads and runs the KVM migration script on remote host.
     
     Returns a job id that can be polled using `get_job_status(job_id)`.
@@ -67,7 +67,7 @@ def start_kvm_migration(host: str, username: str, password: str, port: int = 22,
             local_script_path = os.path.join(os.getcwd(), local_script)
             if not os.path.exists(local_script_path):
                 # Fallback: try the bundled migration script inside app/
-                fallback = os.path.join(os.getcwd(), 'app', 'kvm_migration.py')
+                fallback = os.path.join(os.getcwd(), 'app', 'kvm_mig_script.py')
                 if os.path.exists(fallback):
                     logs.append(f"Local script not found at {local_script_path}, falling back to {fallback}")
                     local_script_path = fallback

@@ -45,6 +45,9 @@
       <button type="button" class="btn-primary" onclick="startMigration()" id="start-btn">
         <i class="fas fa-play"></i> Start Migration
       </button>
+      <button type="button" class="btn-primary" id="check-readiness-btn" style="margin-left:0.5rem; background:#f59e0b; border-color:#f59e0b;" onclick="checkReadiness()">
+        <i class="fas fa-shield-alt"></i> Check Readiness
+      </button>
       <a href="{{ url_for('main.destination_details') }}" class="link-btn">Back</a>
     </div>
 
@@ -55,6 +58,13 @@
     <div class="page-card" style="margin-top: 1rem;">
       <h3>Live Migration Logs</h3>
       <div id="migration-logs" style="white-space: pre-wrap; background:#111; color:#0f0; padding:1rem; height:300px; overflow:auto; font-family: monospace; font-size:12px; border-radius:4px;"></div>
+    </div>
+
+    <div class="page-card" id="readiness-panel" style="margin-top:1rem; display:none;">
+      <h3>Pre-migration Readiness</h3>
+      <div id="readiness-summary" style="margin-top:0.5rem;"></div>
+      <div id="readiness-details" style="margin-top:0.5rem;">
+      </div>
     </div>
   </div>
 
@@ -121,6 +131,71 @@
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-play"></i> Start Migration';
       }
+    }
+
+    async function checkReadiness() {
+      const btn = document.getElementById('check-readiness-btn');
+      const panel = document.getElementById('readiness-panel');
+      const summaryEl = document.getElementById('readiness-summary');
+      const detailsEl = document.getElementById('readiness-details');
+      btn.disabled = true;
+      const original = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+      panel.style.display = 'block';
+      summaryEl.innerHTML = 'Running readiness check...';
+      detailsEl.innerHTML = '';
+
+      try {
+        const resp = await fetch('{{ url_for("main.readiness_check") }}', { method: 'POST' });
+        const j = await resp.json();
+        if (!j.success) {
+          summaryEl.innerHTML = '<strong style="color:crimson">Error:</strong> ' + (j.message || 'unknown');
+          detailsEl.innerHTML = j.raw ? '<pre>'+escapeHtml(j.raw)+'</pre>' : '';
+          btn.disabled = false;
+          btn.innerHTML = original;
+          return;
+        }
+
+        const assessment = j.assessment || {};
+        summaryEl.innerHTML = `<p><strong>Readiness Score:</strong> ${assessment.score ?? 'N/A'}</p><p><strong>Overall:</strong> ${assessment.overall ?? ''}</p>`;
+
+        // Render per-parameter scores
+        const details = assessment.details || {};
+        let html = '<table style="width:100%; border-collapse: collapse;">';
+        html += '<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Parameter</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Score</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Notes</th></tr></thead>';
+        html += '<tbody>';
+        for (const [k,v] of Object.entries(details)) {
+          const score = (typeof v === 'object' && v.score !== undefined) ? v.score : v;
+          const note = (typeof v === 'object' && v.note) ? v.note : '';
+          html += `<tr><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(k)}</td><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(String(score))}</td><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(String(note))}</td></tr>`;
+        }
+        html += '</tbody></table>';
+
+        // Risks and recommendations
+        if (assessment.risks && assessment.risks.length) {
+          html += '<h4>Risks</h4><ul>' + assessment.risks.map(r=>'<li>'+escapeHtml(r)+'</li>').join('') + '</ul>';
+        }
+        if (assessment.recommendations && assessment.recommendations.length) {
+          html += '<h4>Recommendations</h4><ul>' + assessment.recommendations.map(r=>'<li>'+escapeHtml(r)+'</li>').join('') + '</ul>';
+        }
+
+        detailsEl.innerHTML = html;
+      } catch (err) {
+        summaryEl.innerHTML = '<strong style="color:crimson">Error:</strong> ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
   </script>
 {% endblock %}
