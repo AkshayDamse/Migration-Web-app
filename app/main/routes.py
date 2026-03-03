@@ -65,12 +65,12 @@ try:
 except Exception:
     kvm_migration_mod = None
 
-    # Ollama client (optional)
-    try:
-        from ..ollama_client import generate_text, OllamaError
-    except Exception:
-        generate_text = None
-        OllamaError = Exception
+# Ollama client (optional)
+try:
+    from ..ollama_client import generate_text, OllamaError
+except Exception:
+    generate_text = None
+    OllamaError = Exception
 
 @bp.route("/")
 def index():
@@ -479,58 +479,108 @@ def migration_summary():
 
 @bp.route('/readiness-check', methods=['POST'])
 def readiness_check():
-    """Perform a pre-migration readiness check using an LLM (Ollama).
+    """Perform a real pre-migration readiness check using live source/destination data.
 
-    Expects session to contain 'last_vm_list' and destination details stored earlier.
-    Returns JSON with a readiness score, per-parameter scores, and advice.
+    The route SSHs into the destination host and compares available resources to
+    the summed requirements of the selected VMs. No AI models are invoked.
     """
     vms = session.get('last_vm_list')
-    dest = {
-        'host': session.get('destination_host'),
-        'platform': session.get('destination_platform'),
-        'port': session.get('destination_port')
-    }
-    if not vms or not dest['host']:
-        return jsonify(success=False, message='Missing source or destination details in session'), 400
+    dest_host = session.get('destination_host')
+    dest_user = session.get('destination_user')
+    dest_pass = session.get('destination_pass')
+    dest_port = session.get('destination_port', 22)
+    dest_platform = session.get('destination_platform')
 
-    # Build a compact report for the model
-    vm_summaries = []
+    if not vms or not dest_host or not dest_user or not dest_pass:
+        return jsonify(success=False, message='Missing source or destination information in session'), 400
+
+    # compute totals for disk (GB) and RAM (MB)
+    total_disk = 0.0
+    total_ram_mb = 0
     for vm in vms:
-        vm_summaries.append(f"Name: {vm.get('name')} | UUID: {vm.get('instance_uuid')} | CPU: {vm.get('cpu', 'n/a')} | RAM: {vm.get('memoryMB', 'n/a')}MB | Disk: {vm.get('diskGB', 'n/a')}GB")
-
-    prompt = (
-        "You are an expert VM migration assistant. Given the source VMs and destination host, "
-        "produce a readiness assessment. Return a JSON object ONLY with the following keys: "
-        "score (0-100), details (dictionary of parameter->score 0-100), risks (list), recommendations (list), overall (string go/no-go).\n\n"
-        "Source VMs:\n" + "\n".join(vm_summaries) + "\n\n"
-        "Destination:\n" + f"Host: {dest['host']} | Platform: {dest['platform']} | Port: {dest['port']}\n\n"
-        "Assess these areas separately with numeric scores 0-100: compatibility, capacity, network_bandwidth, downtime_risk, prerequisites. "
-        "Provide concise reasons for each and a final overall advice 'go' or 'no-go'."
-    )
-
-    if not generate_text:
-        return jsonify(success=False, message='Readiness check not available (Ollama client missing).'), 500
+        try:
+            total_disk += float(vm.get('diskGB', 0) or 0)
+        except Exception:
+            pass
+        try:
+            total_ram_mb += int(vm.get('memoryMB', 0) or 0)
+        except Exception:
+            pass
 
     try:
-        model = 'mistral'
-        raw = generate_text(prompt, model=model)
-    except OllamaError as e:
-        return jsonify(success=False, message=f'Ollama error: {e}'), 500
+        import paramiko
+    except ImportError:
+        return jsonify(success=False, message='paramiko not installed on server'), 500
+
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(hostname=dest_host, port=int(dest_port), username=dest_user, password=dest_pass, timeout=15)
     except Exception as e:
-        return jsonify(success=False, message=f'Failed to generate readiness: {e}'), 500
+        return jsonify(success=False, message=f'Could not SSH to destination: {e}'), 500
 
-    # Try to extract JSON from model output
-    import re, json
-    m = re.search(r"\{[\s\S]*\}", raw)
-    if not m:
-        return jsonify(success=False, message='Model did not return JSON', raw=raw), 500
+    def run(cmd):
+        stdin, stdout, stderr = client.exec_command(cmd)
+        return stdout.read().decode().strip(), stderr.read().decode().strip()
 
+    out, err = run("df -BG --output=avail / | tail -1")
+    avail_disk = 0.0
     try:
-        result = json.loads(m.group(0))
+        if out:
+            avail_disk = float(out.strip().rstrip('G'))
     except Exception:
-        return jsonify(success=False, message='Failed to parse JSON from model output', raw=raw), 500
+        pass
 
-    return jsonify(success=True, assessment=result, raw=raw)
+    out, err = run("free -m | awk '/Mem:/ {print $7}'")
+    avail_mem_mb = 0
+    try:
+        avail_mem_mb = int(out.strip())
+    except Exception:
+        pass
+
+    out, err = run('uname -a')
+    compat_score = 100 if dest_platform.lower() in out.lower() else 50
+
+    client.close()
+
+    disk_score = min(100, int((avail_disk / total_disk * 100))) if total_disk > 0 else 100
+    ram_score = min(100, int((avail_mem_mb / max(total_ram_mb, 1) * 100)))
+    network_score = 50
+    downtime_score = 50
+    prereq_score = 80
+
+    details = {
+        'capacity_disk': disk_score,
+        'capacity_ram': ram_score,
+        'compatibility': compat_score,
+        'network_bandwidth': network_score,
+        'downtime_risk': downtime_score,
+        'prerequisites': prereq_score,
+    }
+    overall_score = int(sum(details.values()) / len(details))
+    overall = 'go' if disk_score >= 50 and compat_score >= 50 else 'no-go'
+
+    risks = []
+    if avail_disk < total_disk:
+        risks.append('Insufficient disk space on destination')
+    if avail_mem_mb < total_ram_mb:
+        risks.append('Insufficient memory on destination')
+    if compat_score < 60:
+        risks.append('Destination OS/platform may not match chosen platform')
+
+    recommendations = []
+    if disk_score < 50:
+        recommendations.append('Free up or add disk space on destination')
+    if ram_score < 50:
+        recommendations.append('Free up or add RAM on destination')
+
+    return jsonify(success=True, assessment={
+        'score': overall_score,
+        'details': details,
+        'overall': overall,
+        'risks': risks,
+        'recommendations': recommendations
+    })
 
 
 @bp.route('/start-remote-migration', methods=['POST'])

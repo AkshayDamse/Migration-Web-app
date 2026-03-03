@@ -1,13 +1,13 @@
 import requests
 import json
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_URL = "http://192.168.203.143:11434/api/generate"
 
 class OllamaError(Exception):
     pass
 
 
-def generate_text(prompt: str, model: str = "mistral") -> str:
+def generate_text(prompt: str, model: str = "llama2-7b-chat-latest") -> str:
     """Call local Ollama HTTP API and return the generated text.
 
     Falls back with descriptive error if Ollama not reachable or API returns unexpected structure.
@@ -26,7 +26,17 @@ def generate_text(prompt: str, model: str = "mistral") -> str:
     if resp.status_code != 200:
         raise OllamaError(f"Ollama returned HTTP {resp.status_code}: {resp.text}")
 
-    data = resp.json()
+    # parse JSON response; Ollama sometimes returns concatenated JSON objects which causes ValueError
+    try:
+        data = resp.json()
+    except ValueError:
+        # if parsing fails, set data=None and capture raw text for higher-level handler
+        data = None
+        raw_resp = resp.text
+
+    # if parsing failed earlier, just return raw response text
+    if data is None:
+        return raw_resp
 
     # Ollama returns a structured result. Try to extract textual output.
     if isinstance(data, dict):
