@@ -494,10 +494,24 @@ def readiness_check():
     if not vms or not dest_host or not dest_user or not dest_pass:
         return jsonify(success=False, message='Missing source or destination information in session'), 400
 
-    # compute totals for disk (GB) and RAM (MB)
+    # Get selected VM serial numbers from migration module
+    selected_serials = []
+    if migration_mod:
+        try:
+            migration_mod.load_config()
+            selected_serials = migration_mod.sel if isinstance(migration_mod.sel, list) else []
+        except Exception:
+            selected_serials = []
+
+    # Filter to only selected VMs (convert serials from 1-indexed to array indices)
+    selected_vms = [vms[i - 1] for i in selected_serials if 1 <= i <= len(vms)]
+    if not selected_vms:
+        selected_vms = vms  # fallback: if no selection found, use all VMs
+
+    # compute totals for disk (GB) and RAM (MB) from SELECTED VMs only
     total_disk = 0.0
     total_ram_mb = 0
-    for vm in vms:
+    for vm in selected_vms:
         try:
             total_disk += float(vm.get('diskGB', 0) or 0)
         except Exception:
@@ -507,9 +521,9 @@ def readiness_check():
         except Exception:
             pass
 
-    # ---- new: assess VM power states ----
+    # ---- assess VM power states for SELECTED VMs only ----
     # score 100 if all selected VMs are powered off, 0 if any are on
-    powered_on_vms = [vm for vm in vms if vm.get('power_state', '').lower() == 'poweredon']
+    powered_on_vms = [vm for vm in selected_vms if vm.get('power_state', '').lower() == 'poweredon']
     if powered_on_vms:
         vm_status_score = 0
     else:
@@ -613,9 +627,11 @@ def readiness_check():
         risks.append('Insufficient memory on destination')
     if compat_score < 60:
         risks.append('Destination OS/platform may not match chosen platform')
-    # warn about any powered-on VMs
+
+    # warnings for powered-on VMs (not critical risks)
+    warnings = []
     for vm in powered_on_vms:
-        risks.append(f"VM '{vm.get('name', '<unknown>')}' is powered on")
+        warnings.append(f"VM '{vm.get('name', '<unknown>')}' is powered on")
 
     recommendations = []
     if disk_score < 50:
@@ -630,6 +646,7 @@ def readiness_check():
         'details': details,
         'overall': overall,
         'risks': risks,
+        'warnings': warnings,
         'recommendations': recommendations
     })
 

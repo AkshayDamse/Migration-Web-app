@@ -173,7 +173,10 @@
 
         // Risks and recommendations
         if (assessment.risks && assessment.risks.length) {
-          html += '<h4>Risks</h4><ul>' + assessment.risks.map(r=>'<li>'+escapeHtml(r)+'</li>').join('') + '</ul>';
+          html += '<h4 style="color: crimson;">Risks</h4><ul>' + assessment.risks.map(r=>'<li>'+escapeHtml(r)+'</li>').join('') + '</ul>';
+        }
+        if (assessment.warnings && assessment.warnings.length) {
+          html += '<h4 style="color: #f59e0b;">Warnings</h4><ul>' + assessment.warnings.map(w=>'<li>'+escapeHtml(w)+'</li>').join('') + '</ul>';
         }
         if (assessment.recommendations && assessment.recommendations.length) {
           html += '<h4>Recommendations</h4><ul>' + assessment.recommendations.map(r=>'<li>'+escapeHtml(r)+'</li>').join('') + '</ul>';
