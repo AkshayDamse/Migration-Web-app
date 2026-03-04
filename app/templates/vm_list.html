@@ -18,6 +18,7 @@
             </th>
             <th>Sr. No.</th>
             <th>Name</th>
+            <th>State</th>
             <th>Instance UUID</th>
           </tr>
         </thead>
@@ -29,6 +30,7 @@
               </td>
               <td>{{ loop.index }}</td>
               <td>{{ vm.name }}</td>
+              <td>{{ vm.power_state or 'unknown' }}</td>
               <td>{{ vm.instance_uuid }}</td>
             </tr>
           {% endfor %}

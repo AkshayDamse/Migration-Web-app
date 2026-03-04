@@ -507,6 +507,14 @@ def readiness_check():
         except Exception:
             pass
 
+    # ---- new: assess VM power states ----
+    # score 100 if all selected VMs are powered off, 0 if any are on
+    powered_on_vms = [vm for vm in vms if vm.get('power_state', '').lower() == 'poweredon']
+    if powered_on_vms:
+        vm_status_score = 0
+    else:
+        vm_status_score = 100
+
     try:
         import paramiko
     except ImportError:
@@ -538,27 +546,65 @@ def readiness_check():
     except Exception:
         pass
 
-    out, err = run('uname -a')
-    compat_score = 100 if dest_platform.lower() in out.lower() else 50
+    # perform a more specific platform detection instead of naive uname check
+    # check /etc/os-release where available and fall back to uname -a
+    detected_text = ''
+    try:
+        if dest_platform.lower() == 'proxmox':
+            # Proxmox installs include "proxmox" in os-release
+            detected_text, _ = run("grep -i proxmox /etc/os-release || uname -a")
+        elif dest_platform.lower() == 'kvm':
+            # KVM isn't an OS but we can look for libvirt/qemu tools on the system
+            # try to run virsh if available, otherwise fall back to uname
+            detected_text, _ = run("virsh --version 2>/dev/null || uname -a")
+        else:
+            # generic fallback for future platforms
+            detected_text, _ = run('cat /etc/os-release 2>/dev/null || uname -a')
+    except Exception:
+        # if the detection commands fail, default to uname
+        detected_text, _ = run('uname -a')
+
+    compat_score = 100 if dest_platform.lower() in detected_text.lower() else 50
 
     client.close()
 
     disk_score = min(100, int((avail_disk / total_disk * 100))) if total_disk > 0 else 100
     ram_score = min(100, int((avail_mem_mb / max(total_ram_mb, 1) * 100)))
+
+    # network_score: try pinging destination and score based on latency
     network_score = 50
-    downtime_score = 50
-    prereq_score = 80
+    try:
+        out, err = run(f"ping -c 3 {dest_host}")
+        # look for average round-trip time in linux ping output
+        import re
+        m = re.search(r"rtt .* = .*?/([0-9]+\.[0-9]+)", out)
+        if m:
+            avg = float(m.group(1))
+            if avg < 50:
+                network_score = 100
+            elif avg < 100:
+                network_score = 80
+            else:
+                network_score = 50
+        else:
+            network_score = 50
+    except Exception:
+        network_score = 50
+
+    # we no longer calculate downtime_score or prereq_score
+    # vm_status_score calculated earlier
 
     details = {
         'capacity_disk': disk_score,
         'capacity_ram': ram_score,
         'compatibility': compat_score,
         'network_bandwidth': network_score,
-        'downtime_risk': downtime_score,
-        'prerequisites': prereq_score,
+        'vm_status': vm_status_score,
     }
+    # include the new component when computing overall
     overall_score = int(sum(details.values()) / len(details))
-    overall = 'go' if disk_score >= 50 and compat_score >= 50 else 'no-go'
+    # require vm_status_score as well for go/no-go
+    overall = 'go' if disk_score >= 50 and compat_score >= 50 and vm_status_score == 100 else 'no-go'
 
     risks = []
     if avail_disk < total_disk:
@@ -567,12 +613,17 @@ def readiness_check():
         risks.append('Insufficient memory on destination')
     if compat_score < 60:
         risks.append('Destination OS/platform may not match chosen platform')
+    # warn about any powered-on VMs
+    for vm in powered_on_vms:
+        risks.append(f"VM '{vm.get('name', '<unknown>')}' is powered on")
 
     recommendations = []
     if disk_score < 50:
         recommendations.append('Free up or add disk space on destination')
     if ram_score < 50:
         recommendations.append('Free up or add RAM on destination')
+    if vm_status_score < 100:
+        recommendations.append('Shut down or migrate VMs that are powered on before proceeding')
 
     return jsonify(success=True, assessment={
         'score': overall_score,

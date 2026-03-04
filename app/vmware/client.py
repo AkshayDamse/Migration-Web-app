@@ -130,7 +130,18 @@ def list_vms_on_esxi(host: str, username: str, password: str, port: int = 443) -
                 except Exception:
                     instance_uuid = "unknown"
 
-            vm_list.append({"name": vm.name, "instance_uuid": instance_uuid})
+            # capture power state if available (poweredOn/poweredOff/suspended)
+            power_state = None
+            try:
+                power_state = str(vm.runtime.powerState)
+            except Exception:
+                power_state = "unknown"
+
+            vm_list.append({
+                "name": vm.name,
+                "instance_uuid": instance_uuid,
+                "power_state": power_state
+            })
 
         # Clean up view
         container_view.Destroy()
