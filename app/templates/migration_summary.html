@@ -157,24 +157,22 @@
         }
 
         const assessment = j.assessment || {};
-        summaryEl.innerHTML = `<p><strong>Readiness Score:</strong> ${assessment.score ?? 'N/A'}</p><p><strong>Overall:</strong> ${assessment.overall ?? ''}</p>`;
+        summaryEl.innerHTML = `<p><strong>Status:</strong> <span style="font-weight: bold; color: ${assessment.overall === 'ok' ? '#16a34a' : '#dc2626'};">${assessment.overall?.toUpperCase() ?? 'UNKNOWN'}</span></p>`;
 
-        // Render per-parameter scores
+        // Render per-parameter details
         const details = assessment.details || {};
         let html = '<table style="width:100%; border-collapse: collapse;">';
-        html += '<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Parameter</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Score</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Notes</th></tr></thead>';
+        html += '<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Parameter</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Status</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Notes</th></tr></thead>';
         html += '<tbody>';
         for (const [k,v] of Object.entries(details)) {
-          const score = (typeof v === 'object' && v.score !== undefined) ? v.score : v;
+          const status = (typeof v === 'object' && v.status !== undefined) ? v.status : 'unknown';
           const note = (typeof v === 'object' && v.note) ? v.note : '';
-          html += `<tr><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(k)}</td><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(String(score))}</td><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(String(note))}</td></tr>`;
+          const statusColor = status === 'ok' ? '#16a34a' : '#dc2626';
+          html += `<tr><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(k)}</td><td style="padding:6px;border-bottom:1px solid #f1f1f1;color:${statusColor};font-weight:bold;">${escapeHtml(String(status))}</td><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(String(note))}</td></tr>`;
         }
         html += '</tbody></table>';
 
-        // Risks and recommendations
-        if (assessment.risks && assessment.risks.length) {
-          html += '<h4 style="color: crimson;">Risks</h4><ul>' + assessment.risks.map(r=>'<li>'+escapeHtml(r)+'</li>').join('') + '</ul>';
-        }
+        // Warnings and recommendations
         if (assessment.warnings && assessment.warnings.length) {
           html += '<h4 style="color: #f59e0b;">Warnings</h4><ul>' + assessment.warnings.map(w=>'<li>'+escapeHtml(w)+'</li>').join('') + '</ul>';
         }

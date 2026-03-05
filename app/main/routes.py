@@ -560,92 +560,48 @@ def readiness_check():
     except Exception:
         pass
 
-    # perform a more specific platform detection instead of naive uname check
-    # check /etc/os-release where available and fall back to uname -a
-    detected_text = ''
-    try:
-        if dest_platform.lower() == 'proxmox':
-            # Proxmox installs include "proxmox" in os-release
-            detected_text, _ = run("grep -i proxmox /etc/os-release || uname -a")
-        elif dest_platform.lower() == 'kvm':
-            # KVM isn't an OS but we can look for libvirt/qemu tools on the system
-            # try to run virsh if available, otherwise fall back to uname
-            detected_text, _ = run("virsh --version 2>/dev/null || uname -a")
-        else:
-            # generic fallback for future platforms
-            detected_text, _ = run('cat /etc/os-release 2>/dev/null || uname -a')
-    except Exception:
-        # if the detection commands fail, default to uname
-        detected_text, _ = run('uname -a')
-
-    compat_score = 100 if dest_platform.lower() in detected_text.lower() else 50
-
     client.close()
 
-    disk_score = min(100, int((avail_disk / total_disk * 100))) if total_disk > 0 else 100
-    ram_score = min(100, int((avail_mem_mb / max(total_ram_mb, 1) * 100)))
+    # determine status by direct comparison with totals (no percentage)
+    disk_status = 'ok' if total_disk <= avail_disk else 'not ok'
+    disk_reason = '' if total_disk <= avail_disk else 'Insufficient disk space on destination'
 
-    # network_score: try pinging destination and score based on latency
-    network_score = 50
-    try:
-        out, err = run(f"ping -c 3 {dest_host}")
-        # look for average round-trip time in linux ping output
-        import re
-        m = re.search(r"rtt .* = .*?/([0-9]+\.[0-9]+)", out)
-        if m:
-            avg = float(m.group(1))
-            if avg < 50:
-                network_score = 100
-            elif avg < 100:
-                network_score = 80
-            else:
-                network_score = 50
-        else:
-            network_score = 50
-    except Exception:
-        network_score = 50
+    ram_status = 'ok' if total_ram_mb <= avail_mem_mb else 'not ok'
+    ram_reason = '' if total_ram_mb <= avail_mem_mb else 'Insufficient memory on destination'
+    # vm_status_score already calculated earlier
 
-    # we no longer calculate downtime_score or prereq_score
-    # vm_status_score calculated earlier
+    vm_status = 'ok' if vm_status_score == 100 else 'not ok'
+    vm_reasons = []
+    for vm in powered_on_vms:
+        vm_reasons.append(f"VM '{vm.get('name', '<unknown>')}' is powered on")
+    vm_reason = ' | '.join(vm_reasons) if vm_reasons else ''
 
+    # Build details with status and notes
     details = {
-        'capacity_disk': disk_score,
-        'capacity_ram': ram_score,
-        'compatibility': compat_score,
-        'network_bandwidth': network_score,
-        'vm_status': vm_status_score,
+        'capacity_disk': {'status': disk_status, 'note': disk_reason},
+        'capacity_ram': {'status': ram_status, 'note': ram_reason},
+        'vm_status': {'status': vm_status, 'note': vm_reason},
     }
-    # include the new component when computing overall
-    overall_score = int(sum(details.values()) / len(details))
-    # require vm_status_score as well for go/no-go
-    overall = 'go' if disk_score >= 50 and compat_score >= 50 and vm_status_score == 100 else 'no-go'
 
-    risks = []
-    if avail_disk < total_disk:
-        risks.append('Insufficient disk space on destination')
-    if avail_mem_mb < total_ram_mb:
-        risks.append('Insufficient memory on destination')
-    if compat_score < 60:
-        risks.append('Destination OS/platform may not match chosen platform')
+    # overall status: ok only if all three are ok
+    overall = 'ok' if disk_status == 'ok' and ram_status == 'ok' and vm_status == 'ok' else 'not ok'
 
-    # warnings for powered-on VMs (not critical risks)
+    # we no longer produce risk list
     warnings = []
     for vm in powered_on_vms:
         warnings.append(f"VM '{vm.get('name', '<unknown>')}' is powered on")
 
     recommendations = []
-    if disk_score < 50:
+    if disk_status == 'not ok':
         recommendations.append('Free up or add disk space on destination')
-    if ram_score < 50:
+    if ram_status == 'not ok':
         recommendations.append('Free up or add RAM on destination')
     if vm_status_score < 100:
-        recommendations.append('Shut down or migrate VMs that are powered on before proceeding')
+        recommendations.append('Shut down powered-on VMs before proceeding')
 
     return jsonify(success=True, assessment={
-        'score': overall_score,
-        'details': details,
         'overall': overall,
-        'risks': risks,
+        'details': details,
         'warnings': warnings,
         'recommendations': recommendations
     })
