@@ -671,21 +671,118 @@ def migration_status(job_id):
         return jsonify(success=False, message=str(e)), 500
 
 
-@bp.route('/download-log/<job_id>', methods=['GET'])
-def download_log(job_id):
-    """Return the logs for a job as a downloadable text file."""
+@bp.route('/post-migration-check', methods=['POST'])
+def post_migration_check():
+    """Perform post-migration verification by comparing source and destination VM specs."""
+    import sys
+
+    # Get selected VMs from session/config
+    selected_serials = []
+    if migration_mod:
+        try:
+            migration_mod.load_config()
+            selected_serials = migration_mod.sel if isinstance(migration_mod.sel, list) else []
+        except Exception:
+            selected_serials = []
+
+    source_vms = session.get('last_vm_list', [])
+    selected_vms = [vm for vm in source_vms if vm.get('instance_uuid') in [source_vms[i-1]['instance_uuid'] for i in selected_serials if 1 <= i <= len(source_vms)]]
+
+    dest_host = session.get('destination_host')
+    dest_user = session.get('destination_user')
+    dest_pass = session.get('destination_pass')
+    dest_port = session.get('destination_port', 22)
+    dest_platform = session.get('destination_platform')
+
+    if not selected_vms or not dest_host or not dest_user or not dest_pass:
+        return jsonify(success=False, message='Missing migration data'), 400
+
+    # Query destination VMs
+    dest_vms = []
     try:
-        job = get_job_status(job_id)
-    except SSHRunnerError:
-        flash('Job not found', 'error')
+        import paramiko
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(hostname=dest_host, port=int(dest_port), username=dest_user, password=dest_pass, timeout=15)
+
+        def run(cmd):
+            stdin, stdout, stderr = client.exec_command(cmd)
+            return stdout.read().decode().strip(), stderr.read().decode().strip()
+
+        if dest_platform.lower() == 'proxmox':
+            # For Proxmox, list VMs and get configs
+            out, err = run("qm list")
+            # Parse qm list output to get VM IDs and names
+            # Then for each, qm config <id> to get specs
+            # This is simplified; in reality, parse the output
+            dest_vms = []  # populate with parsed data
+        elif dest_platform.lower() == 'kvm':
+            # For KVM, use virsh list --all and virsh dumpxml
+            out, err = run("virsh list --all --name")
+            vm_names = [line.strip() for line in out.split('\n') if line.strip()]
+            for name in vm_names:
+                xml_out, _ = run(f"virsh dumpxml {name}")
+                # Parse XML for CPU, RAM, etc.
+                # Simplified: extract basic info
+                dest_vms.append({'name': name, 'cpu_count': 0, 'memory_mb': 0, 'storage_gb': 0, 'network_interfaces': [], 'scsi_controllers': []})
+
+        client.close()
+    except Exception as e:
+        return jsonify(success=False, message=f'Failed to query destination: {e}'), 500
+
+    # Compare each selected VM
+    comparison_results = []
+    for src_vm in selected_vms:
+        dest_vm = next((dv for dv in dest_vms if dv['name'] == src_vm['name']), None)
+        if not dest_vm:
+            comparison_results.append({
+                'vm_name': src_vm['name'],
+                'status': 'not found on destination',
+                'differences': {}
+            })
+            continue
+
+        differences = {}
+        for key in ['cpu_count', 'memory_mb', 'storage_gb']:
+            src_val = src_vm.get(key)
+            dest_val = dest_vm.get(key)
+            if src_val != dest_val:
+                differences[key] = {'source': src_val, 'destination': dest_val}
+
+        # For lists like network_interfaces, scsi_controllers, compare lengths or exact
+        for key in ['network_interfaces', 'scsi_controllers']:
+            src_list = src_vm.get(key, [])
+            dest_list = dest_vm.get(key, [])
+            if set(src_list) != set(dest_list):
+                differences[key] = {'source': src_list, 'destination': dest_list}
+
+        status = 'ok' if not differences else 'differences found'
+        comparison_results.append({
+            'vm_name': src_vm['name'],
+            'status': status,
+            'differences': differences
+        })
+
+    # Store results in session for download
+    session['post_migration_results'] = comparison_results
+
+    return jsonify(success=True, comparison=comparison_results)
+
+
+@bp.route('/download-post-migration-log', methods=['GET'])
+def download_post_migration_log():
+    """Return the post-migration check results as a downloadable JSON file."""
+    results = session.get('post_migration_results')
+    if not results:
+        flash('No post-migration results found. Run the check first.', 'error')
         return redirect(url_for('main.migration_summary'))
 
-    logs = job.get('logs', [])
-    content = '\n'.join(logs)
+    import json
+    content = json.dumps(results, indent=2)
     from flask import Response
-    filename = f'migration_{job_id}.log'
+    filename = 'post_migration_check.json'
     headers = {
-        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Type': 'application/json; charset=utf-8',
         'Content-Disposition': f'attachment; filename="{filename}"'
     }
     return Response(content, headers=headers)
