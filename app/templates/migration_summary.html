@@ -94,11 +94,11 @@
         // show download link
         const dl = document.getElementById('download-link');
         dl.style.display = 'inline-block';
-        dl.href = '{{ url_for("main.download_log", job_id="") }}' + currentJob;
+        dl.href = '{{ url_for("main.download_log", job_id="JOB_ID") }}'.replace('JOB_ID', currentJob);
 
         // Poll logs
         const poll = setInterval(async () => {
-          const s = await fetch('{{ url_for("main.migration_status", job_id="") }}' + currentJob);
+          const s = await fetch('{{ url_for("main.migration_status", job_id="JOB_ID") }}'.replace('JOB_ID', currentJob));
           const j = await s.json();
           if (!j.success) {
             logsEl.textContent += '\nERROR: ' + (j.message || 'unknown');
@@ -136,7 +136,7 @@
         const dl2 = document.getElementById('download-link');
         if (currentJob) {
           dl2.style.display = 'inline-block';
-          dl2.href = '{{ url_for("main.download_log", job_id="") }}' + currentJob;
+          dl2.href = '{{ url_for("main.download_log", job_id="JOB_ID") }}'.replace('JOB_ID', currentJob);
         }
         
       } catch (err) {
