@@ -137,47 +137,10 @@ def list_vms_on_esxi(host: str, username: str, password: str, port: int = 443) -
             except Exception:
                 power_state = "unknown"
 
-            # capture detailed hardware specs
-            cpu_count = None
-            memory_mb = None
-            storage_gb = 0.0
-            network_interfaces = []
-            scsi_controllers = []
-
-            try:
-                if vm.config and vm.config.hardware:
-                    cpu_count = vm.config.hardware.numCPU
-                    memory_mb = vm.config.hardware.memoryMB
-
-                    # storage: sum of all disk capacities
-                    for device in vm.config.hardware.device:
-                        if hasattr(device, 'capacityInKB') and device.capacityInKB:
-                            storage_gb += device.capacityInKB / (1024 * 1024)  # KB to GB
-
-                    # network interfaces
-                    for device in vm.config.hardware.device:
-                        if hasattr(device, 'deviceInfo') and device.deviceInfo:
-                            if 'network' in device.deviceInfo.label.lower():
-                                network_interfaces.append(device.deviceInfo.label)
-
-                    # SCSI controllers
-                    for device in vm.config.hardware.device:
-                        if hasattr(device, 'deviceInfo') and device.deviceInfo:
-                            if 'scsi' in device.deviceInfo.label.lower():
-                                scsi_controllers.append(device.deviceInfo.label)
-
-            except Exception:
-                pass
-
             vm_list.append({
                 "name": vm.name,
                 "instance_uuid": instance_uuid,
-                "power_state": power_state,
-                "cpu_count": cpu_count,
-                "memory_mb": memory_mb,
-                "storage_gb": round(storage_gb, 2),
-                "network_interfaces": network_interfaces,
-                "scsi_controllers": scsi_controllers
+                "power_state": power_state
             })
 
         # Clean up view

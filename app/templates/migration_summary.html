@@ -55,10 +55,10 @@
       <a id="download-link" class="link-btn" style="display:none;" href="#">Download Logs</a>
     </div>
 
-    <div class="page-card" id="post-migration-panel" style="margin-top:1rem; display:none;">
-      <h3>Post Migration Verification</h3>
-      <div id="post-migration-summary" style="margin-top:0.5rem;"></div>
-      <div id="post-migration-details" style="margin-top:0.5rem;">
+    <div class="page-card" id="readiness-panel" style="margin-top:1rem; display:none;">
+      <h3>Pre-migration Readiness</h3>
+      <div id="readiness-summary" style="margin-top:0.5rem;"></div>
+      <div id="readiness-details" style="margin-top:0.5rem;">
       </div>
     </div>
 
@@ -94,11 +94,11 @@
         // show download link
         const dl = document.getElementById('download-link');
         dl.style.display = 'inline-block';
-        dl.href = '{{ url_for("main.download_log", job_id="JOB_ID") }}'.replace('JOB_ID', currentJob);
+        dl.href = '{{ url_for("main.download_log", job_id="") }}' + currentJob;
 
         // Poll logs
         const poll = setInterval(async () => {
-          const s = await fetch('{{ url_for("main.migration_status", job_id="JOB_ID") }}'.replace('JOB_ID', currentJob));
+          const s = await fetch('{{ url_for("main.migration_status", job_id="") }}' + currentJob);
           const j = await s.json();
           if (!j.success) {
             logsEl.textContent += '\nERROR: ' + (j.message || 'unknown');
@@ -116,19 +116,6 @@
             clearInterval(poll);
             btn.disabled = false;
             btn.innerHTML = job.status === 'finished' ? '<i class="fas fa-check"></i> Done' : '<i class="fas fa-exclamation-triangle"></i> Failed';
-
-            // Show post-migration check button if finished
-            if (job.status === 'finished') {
-              const postCheckBtn = document.createElement('button');
-              postCheckBtn.type = 'button';
-              postCheckBtn.className = 'btn-primary';
-              postCheckBtn.style.marginLeft = '0.5rem';
-              postCheckBtn.style.background = '#10b981';
-              postCheckBtn.style.borderColor = '#10b981';
-              postCheckBtn.innerHTML = '<i class="fas fa-search"></i> Post Migration Check';
-              postCheckBtn.onclick = checkPostMigration;
-              btn.parentNode.appendChild(postCheckBtn);
-            }
           }
         }, 1500);
 
@@ -136,7 +123,7 @@
         const dl2 = document.getElementById('download-link');
         if (currentJob) {
           dl2.style.display = 'inline-block';
-          dl2.href = '{{ url_for("main.download_log", job_id="JOB_ID") }}'.replace('JOB_ID', currentJob);
+          dl2.href = '{{ url_for("main.download_log", job_id="") }}' + currentJob;
         }
         
       } catch (err) {
@@ -210,62 +197,6 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
-    }
-
-    async function checkPostMigration() {
-      const btn = document.querySelector('button[onclick="checkPostMigration()"]');
-      const panel = document.getElementById('post-migration-panel');
-      const summaryEl = document.getElementById('post-migration-summary');
-      const detailsEl = document.getElementById('post-migration-details');
-      btn.disabled = true;
-      const original = btn.innerHTML;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
-      panel.style.display = 'block';
-      summaryEl.innerHTML = 'Running post-migration check...';
-      detailsEl.innerHTML = '';
-
-      try {
-        const resp = await fetch('{{ url_for("main.post_migration_check") }}', { method: 'POST' });
-        const j = await resp.json();
-        if (!j.success) {
-          summaryEl.innerHTML = '<strong style="color:crimson">Error:</strong> ' + (j.message || 'unknown');
-          detailsEl.innerHTML = j.raw ? '<pre>'+escapeHtml(j.raw)+'</pre>' : '';
-          btn.disabled = false;
-          btn.innerHTML = original;
-          return;
-        }
-
-        const comparison = j.comparison || [];
-        summaryEl.innerHTML = `<p><strong>Post Migration Check:</strong> ${comparison.length} VMs verified</p>`;
-
-        // Render comparison table
-        let html = '<table style="width:100%; border-collapse: collapse;">';
-        html += '<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">VM Name</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Status</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Differences</th></tr></thead>';
-        html += '<tbody>';
-        for (const comp of comparison) {
-          const statusColor = comp.status === 'ok' ? '#16a34a' : '#dc2626';
-          let diffText = '';
-          if (comp.differences && Object.keys(comp.differences).length > 0) {
-            diffText = Object.entries(comp.differences).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('; ');
-          }
-          html += `<tr><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(comp.vm_name)}</td><td style="padding:6px;border-bottom:1px solid #f1f1f1;color:${statusColor};font-weight:bold;">${escapeHtml(comp.status)}</td><td style="padding:6px;border-bottom:1px solid #f1f1f1">${escapeHtml(diffText)}</td></tr>`;
-        }
-        html += '</tbody></table>';
-
-        detailsEl.innerHTML = html;
-
-        // Show download link for post-migration results
-        const dlLink = document.createElement('a');
-        dlLink.className = 'link-btn';
-        dlLink.href = '{{ url_for("main.download_post_migration_log") }}';
-        dlLink.innerHTML = '<i class="fas fa-download"></i> Download Post-Migration Report';
-        detailsEl.appendChild(dlLink);
-      } catch (err) {
-        summaryEl.innerHTML = '<strong style="color:crimson">Error:</strong> ' + err.message;
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = original;
-      }
     }
   </script>
 {% endblock %}
