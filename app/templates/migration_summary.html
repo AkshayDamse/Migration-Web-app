@@ -48,6 +48,9 @@
       <button type="button" class="btn-primary" id="check-readiness-btn" style="margin-left:0.5rem; background:#f59e0b; border-color:#f59e0b;" onclick="checkReadiness()">
         <i class="fas fa-shield-alt"></i> Check Readiness
       </button>
+      <button type="button" class="btn-primary" id="post-migration-check-btn" style="margin-left:0.5rem; background:#10b981; border-color:#10b981; display:none;" onclick="postMigrationCheck()">
+        <i class="fas fa-check-double"></i> Post Migration Check
+      </button>
       <a href="{{ url_for('main.destination_details') }}" class="link-btn">Back</a>
     </div>
 
@@ -116,6 +119,14 @@
             clearInterval(poll);
             btn.disabled = false;
             btn.innerHTML = job.status === 'finished' ? '<i class="fas fa-check"></i> Done' : '<i class="fas fa-exclamation-triangle"></i> Failed';
+
+            // Show Post Migration Check button if finished
+            if (job.status === 'finished') {
+              const postCheckBtn = document.getElementById('post-migration-check-btn');
+              if (postCheckBtn) {
+                postCheckBtn.style.display = 'inline-block';
+              }
+            }
           }
         }, 1500);
 
@@ -197,6 +208,14 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+    }
+
+    function postMigrationCheck() {
+      if (!currentJob) {
+        alert('No migration job found. Please start migration first.');
+        return;
+      }
+      window.location.href = '{{ url_for("main.post_migration_check", job_id="") }}' + currentJob;
     }
   </script>
 {% endblock %}

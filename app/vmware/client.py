@@ -137,15 +137,44 @@ def list_vms_on_esxi(host: str, username: str, password: str, port: int = 443) -
             except Exception:
                 power_state = "unknown"
 
+            # Collect hardware details
+            num_cpu = 0
+            memory_mb = 0
+            disk_gb = 0.0
+            network_interfaces = []
+            scsi_controller = None
+            
+            try:
+                if vm.config.hardware:
+                    num_cpu = vm.config.hardware.numCPU or 0
+                    memory_mb = vm.config.hardware.memoryMB or 0
+                    
+                    # Calculate total disk size
+                    if vm.config.hardware.device:
+                        for device in vm.config.hardware.device:
+                            if isinstance(device, vim.vm.device.VirtualDisk):
+                                disk_gb += (device.capacityInKB or 0) / (1024 * 1024)  # Convert KB to GB
+                            elif isinstance(device, vim.vm.device.VirtualEthernetCard):
+                                network_interfaces.append(str(device.deviceInfo.label))
+                            elif isinstance(device, vim.vm.device.VirtualSCSIController):
+                                scsi_controller = device.deviceInfo.label or 'SCSI Controller'
+            except Exception as e:
+                print(f"Warning: Could not get hardware details for VM {vm.name}: {e}")
+
             vm_list.append({
                 "name": vm.name,
                 "instance_uuid": instance_uuid,
-                "power_state": power_state
+                "power_state": power_state,
+                "num_cpu": num_cpu,
+                "memoryMB": memory_mb,
+                "diskGB": disk_gb,
+                "network": network_interfaces,
+                "scsi_controller": scsi_controller or "Unknown"
             })
 
         # Clean up view
         container_view.Destroy()
-        return vm_list
+        return vm_list   
     finally:
         try:
             Disconnect(si)

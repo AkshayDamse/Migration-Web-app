@@ -1,0 +1,135 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <div class="page-card">
+    <h2>Post Migration Check</h2>
+    <p>Comparison of VM parameters before and after migration.</p>
+    
+    {% for comparison in vm_comparisons %}
+      <div class="page-card" style="margin-top: 1rem;">
+        <h3>{{ comparison.name }}</h3>
+        
+        {% if not comparison.matched %}
+          <div style="color: #dc2626; padding: 1rem; background: #fef2f2; border-radius: 4px;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Warning:</strong> No matching VM found on destination. Migration may have failed or VM name changed.
+          </div>
+        {% endif %}
+        
+        <table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+          <thead>
+            <tr style="background: #f3f4f6;">
+              <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e5e7eb;">Parameter</th>
+              <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e5e7eb;">Before Migration (Source)</th>
+              <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e5e7eb;">After Migration (Destination)</th>
+              <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e5e7eb;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">CPU Cores</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{{ comparison.source.cpu }}</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{{ comparison.destination.cpu if comparison.destination else 'N/A' }}</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+                {% if comparison.destination %}
+                  {% if comparison.source.cpu == comparison.destination.cpu %}
+                    <span style="color: #16a34a;"><i class="fas fa-check"></i> Match</span>
+                  {% else %}
+                    <span style="color: #dc2626;"><i class="fas fa-exclamation-triangle"></i> Mismatch</span>
+                  {% endif %}
+                {% else %}
+                  <span style="color: #6b7280;">N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">RAM (MB)</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{{ comparison.source.ram_mb }}</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{{ comparison.destination.ram_mb if comparison.destination else 'N/A' }}</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+                {% if comparison.destination %}
+                  {% if comparison.source.ram_mb == comparison.destination.ram_mb %}
+                    <span style="color: #16a34a;"><i class="fas fa-check"></i> Match</span>
+                  {% else %}
+                    <span style="color: #dc2626;"><i class="fas fa-exclamation-triangle"></i> Mismatch</span>
+                  {% endif %}
+                {% else %}
+                  <span style="color: #6b7280;">N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Storage (GB)</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{{ comparison.source.storage_gb }}</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{{ "%.2f"|format(comparison.destination.storage_gb) if comparison.destination else 'N/A' }}</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+                {% if comparison.destination %}
+                  {% if "%.2f"|format(comparison.source.storage_gb) == "%.2f"|format(comparison.destination.storage_gb) %}
+                    <span style="color: #16a34a;"><i class="fas fa-check"></i> Match</span>
+                  {% else %}
+                    <span style="color: #dc2626;"><i class="fas fa-exclamation-triangle"></i> Mismatch</span>
+                  {% endif %}
+                {% else %}
+                  <span style="color: #6b7280;">N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Network Interfaces</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+                {% if comparison.source.network %}
+                  {{ comparison.source.network|length }} interface(s)
+                {% else %}
+                  None
+                {% endif %}
+              </td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+                {% if comparison.destination %}
+                  {{ comparison.destination.network|length }} interface(s)
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+                {% if comparison.destination %}
+                  {% if comparison.source.network|length == comparison.destination.network|length %}
+                    <span style="color: #16a34a;"><i class="fas fa-check"></i> Match</span>
+                  {% else %}
+                    <span style="color: #dc2626;"><i class="fas fa-exclamation-triangle"></i> Mismatch</span>
+                  {% endif %}
+                {% else %}
+                  <span style="color: #6b7280;">N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">SCSI Controller</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{{ comparison.source.scsi_controller }}</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{{ comparison.destination.scsi_controller if comparison.destination else 'N/A' }}</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+                {% if comparison.destination %}
+                  {% if comparison.source.scsi_controller == comparison.destination.scsi_controller %}
+                    <span style="color: #16a34a;"><i class="fas fa-check"></i> Match</span>
+                  {% else %}
+                    <span style="color: #dc2626;"><i class="fas fa-exclamation-triangle"></i> Mismatch</span>
+                  {% endif %}
+                {% else %}
+                  <span style="color: #6b7280;">N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+    
+    <div class="form-actions" style="margin-top: 2rem;">
+      <a href="{{ url_for('main.migration_summary', job_id=job_id) }}" class="btn-primary">
+        <i class="fas fa-arrow-left"></i> Back to Migration Summary
+      </a>
+      <a href="{{ url_for('main.download_log', job_id=job_id) }}" class="link-btn">
+        <i class="fas fa-download"></i> Download Migration Logs
+      </a>
+    </div>
+  </div>
+{% endblock %}

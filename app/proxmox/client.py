@@ -153,3 +153,102 @@ def get_proxmox_nodes(host: str, username: str, password: str, port: int = 8006)
     
     except Exception as e:
         raise ProxmoxConnectionError(f"Unable to connect to Proxmox host {host}: {e}")
+
+
+def get_proxmox_vms(host: str, username: str, password: str, port: int = 8006, node: str = None) -> list:
+    """
+    Get list of VMs (QEMU) from Proxmox using password authentication.
+    
+    Args:
+        host: Proxmox host IP or hostname
+        username: Username (e.g., root@pam)
+        password: Password for the user
+        port: Proxmox API port (default 8006)
+        node: Specific node to query (if None, uses first available node)
+    
+    Returns:
+        list: List of VM dictionaries with details
+        
+    Raises:
+        ProxmoxConnectionError on failures
+    """
+    if not ProxmoxAPI_available:
+        raise ProxmoxConnectionError("proxmoxer is not installed.")
+    
+    try:
+        # Simple connection - no SSL verification
+        proxmox = ProxmoxAPI(
+            host,
+            user=username,
+            password=password,
+            port=port,
+            verify_ssl=False
+        )
+        
+        # Get nodes if not specified
+        if not node:
+            nodes = proxmox.nodes.get()
+            if not nodes:
+                raise ProxmoxConnectionError("No nodes found in Proxmox cluster")
+            node = nodes[0]['node']
+        
+        # Get QEMU VMs
+        vms = proxmox.nodes(node).qemu.get()
+        
+        # Enrich VM data with config details
+        enriched_vms = []
+        for vm in vms:
+            vm_id = vm['vmid']
+            try:
+                config = proxmox.nodes(node).qemu(vm_id).config.get()
+                vm['config'] = config
+                
+                # Extract useful parameters
+                vm['cpu'] = config.get('cores', 0) * config.get('sockets', 1)  # Total CPUs
+                vm['memory'] = int(config.get('memory', 0))  # RAM in MB
+                
+                # Storage: parse disk sizes
+                storage_info = {}
+                for key, value in config.items():
+                    if key.startswith('scsi') or key.startswith('virtio') or key.startswith('ide') or key.startswith('sata'):
+                        # Parse disk size, e.g., "local:100" or "local:100,format=qcow2"
+                        if ':' in str(value):
+                            parts = str(value).split(',')
+                            size_part = parts[0].split(':')
+                            if len(size_part) > 1:
+                                try:
+                                    size_gb = float(size_part[1])
+                                    storage_info[key] = size_gb
+                                except ValueError:
+                                    pass
+                
+                vm['storage'] = storage_info
+                vm['total_storage_gb'] = sum(storage_info.values())
+                
+                # Network
+                network_info = []
+                for key, value in config.items():
+                    if key.startswith('net'):
+                        network_info.append(key)  # Just add the interface names
+                vm['network'] = network_info
+                
+                # SCSI controller
+                scsi_controller = config.get('scsihw', 'none')
+                vm['scsi_controller'] = scsi_controller
+                
+            except Exception as e:
+                print(f"Warning: Could not get config for VM {vm_id}: {e}")
+                vm['config'] = {}
+                vm['cpu'] = 0
+                vm['memory'] = 0
+                vm['storage'] = {}
+                vm['total_storage_gb'] = 0
+                vm['network'] = []
+                vm['scsi_controller'] = 'none'
+            
+            enriched_vms.append(vm)
+        
+        return enriched_vms
+    
+    except Exception as e:
+        raise ProxmoxConnectionError(f"Unable to get VMs from Proxmox host {host}: {e}")
