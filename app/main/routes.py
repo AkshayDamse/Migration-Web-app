@@ -718,13 +718,17 @@ def post_migration_check(job_id):
     destination_vms = []
     if dest_platform == 'proxmox' and get_proxmox_vms:
         try:
-            destination_vms = get_proxmox_vms(dest_host, dest_user, dest_pass, port=dest_port)
+            # proxmox API always uses port 8006, not SSH port
+            
+            proxmox_user = dest_user if '@' in dest_user else f"{dest_user}@pam"
+            destination_vms = get_proxmox_vms(dest_host, proxmox_user, dest_pass, port=dest_port)
         except ProxmoxConnectionError as e:
             flash(f"Could not connect to Proxmox: {e}", "error")
             return redirect(url_for("main.migration_summary"))
     elif dest_platform == 'kvm':
         try:
-            destination_vms = get_kvm_vms(dest_host, dest_user, dest_pass, port=dest_port)
+            # KVM uses SSH port for virsh commands
+            destination_vms = get_kvm_vms(dest_host, dest_user, dest_pass, port=int(dest_port))
         except Exception as e:
             flash(f"Could not connect to KVM host: {e}", "error")
             return redirect(url_for("main.migration_summary"))
@@ -887,7 +891,7 @@ def get_kvm_vms(host: str, username: str, password: str, port: int = 22) -> list
         client.close()
         raise Exception(f'Failed to get KVM VMs: {e}')
     
-    
+
 @bp.route('/download-log/<job_id>', methods=['GET'])
 def download_log(job_id):
     """Return the logs for a job as a downloadable text file."""
