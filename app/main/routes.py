@@ -689,7 +689,7 @@ def post_migration_check(job_id):
     dest_host = session.get('destination_host')
     dest_user = session.get('destination_user')
     dest_pass = session.get('destination_pass')
-    dest_port = session.get('destination_port', 8006)
+    dest_port = session.get('destination_port', 22)
     dest_platform = session.get('destination_platform', 'proxmox')
     
     if not dest_host or not dest_user or not dest_pass:
@@ -715,10 +715,9 @@ def post_migration_check(job_id):
     destination_vms = []
     if dest_platform == 'proxmox' and get_proxmox_vms:
         try:
-            # proxmox API always uses port 8006, not SSH port
-
+            # proxmox API uses port 8006 regardless of SSH port
             proxmox_user = dest_user if '@' in dest_user else f"{dest_user}@pam"
-            destination_vms = get_proxmox_vms(dest_host, proxmox_user, dest_pass, port=dest_port)
+            destination_vms = get_proxmox_vms(dest_host, proxmox_user, dest_pass, port=8006)
         except ProxmoxConnectionError as e:
             flash(f"Could not connect to Proxmox: {e}", "error")
             return redirect(url_for("main.migration_summary"))
@@ -733,24 +732,52 @@ def post_migration_check(job_id):
         flash(f"Post-migration check not supported for {dest_platform} destinations.", "error")
         return redirect(url_for("main.migration_summary"))
     
-    # Match VMs by name (assuming migrated VMs have same name)
+    def normalize_vm_name(name):
+        if not name:
+            return ''
+        return ''.join(c for c in str(name).lower() if c.isalnum())
+
+    # Report destination VM candidates for debugging
+    print(f"[DEBUG] Selected source VM names: {[vm.get('name') for vm in selected_source_vms]}", file=sys.stderr)
+    print(f"[DEBUG] Destination VM names: {[vm.get('name') for vm in destination_vms]}", file=sys.stderr)
+
+    # Match VMs by normalized name (plus fallback on substring) 
     vm_comparisons = []
     for source_vm in selected_source_vms:
-        source_name = source_vm.get('name', '').lower()
+        source_name = source_vm.get('name', '')
+        source_norm = normalize_vm_name(source_name)
         matched_dest_vm = None
+
         for dest_vm in destination_vms:
-            if dest_vm.get('name', '').lower() == source_name:
+            dest_name = dest_vm.get('name', '')
+            dest_norm = normalize_vm_name(dest_name)
+            if dest_norm == source_norm:
                 matched_dest_vm = dest_vm
                 break
-        
+
+        if not matched_dest_vm:
+            # try startswith or contains (fallback)
+            for dest_vm in destination_vms:
+                dest_name = dest_vm.get('name', '')
+                dest_norm = normalize_vm_name(dest_name)
+                if source_norm and (source_norm in dest_norm or dest_norm in source_norm):
+                    matched_dest_vm = dest_vm
+                    break
+
+        source_cpu = source_vm.get('cpu_count') or source_vm.get('num_cpu') or 0
+        source_ram = source_vm.get('memory_mb') or source_vm.get('memoryMB') or 0
+        source_storage = source_vm.get('storage_gb') or source_vm.get('diskGB') or 0
+        source_network = source_vm.get('network') or source_vm.get('network_interfaces') or []
+        source_scsi = source_vm.get('scsi_controller') or source_vm.get('scsi_controllers') or []
+
         comparison = {
-            'name': source_vm.get('name', 'Unknown'),
+            'name': source_name or 'Unknown',
             'source': {
-                'cpu': source_vm.get('num_cpu', 0),
-                'ram_mb': source_vm.get('memoryMB', 0),
-                'storage_gb': source_vm.get('diskGB', 0),
-                'network': source_vm.get('network', []),
-                'scsi_controller': source_vm.get('scsi_controller', 'Unknown')
+                'cpu': source_cpu,
+                'ram_mb': source_ram,
+                'storage_gb': source_storage,
+                'network': source_network,
+                'scsi_controller': source_scsi
             },
             'destination': {
                 'cpu': matched_dest_vm.get('cpu', 0) if matched_dest_vm else 0,

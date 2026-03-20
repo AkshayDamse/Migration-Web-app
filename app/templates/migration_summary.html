@@ -215,7 +215,7 @@
         alert('No migration job found. Please start migration first.');
         return;
       }
-      window.location.href = '{{ url_for("main.post_migration_check", job_id="") }}' + currentJob;
+      window.location.href = '{{ url_for("main.post_migration_check", job_id="JOB_ID") }}'.replace('JOB_ID', currentJob);
     }
   </script>
 {% endblock %}
