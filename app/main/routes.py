@@ -705,21 +705,18 @@ def post_migration_check(job_id):
         except Exception:
             selected_serials = []
     
-    if not selected_serials:
-        # If no selection, use all VMs
-        selected_source_vms = source_vms
-    else:
-        # Filter to selected VMs
-        selected_source_vms = [vm for vm in source_vms if vm.get('serial') in selected_serials]
-        if not selected_source_vms:
-            selected_source_vms = source_vms  # fallback
+    # Filter to only selected VMs (convert serials from 1-indexed to array indices)
+    selected_source_vms = [source_vms[i - 1] for i in selected_serials if 1 <= i <= len(source_vms)]
+    if not selected_source_vms:
+        # if no selection,use all VMs
+        selected_source_vms = source_vms # fallback
     
     # Get destination VMs
     destination_vms = []
     if dest_platform == 'proxmox' and get_proxmox_vms:
         try:
             # proxmox API always uses port 8006, not SSH port
-            
+
             proxmox_user = dest_user if '@' in dest_user else f"{dest_user}@pam"
             destination_vms = get_proxmox_vms(dest_host, proxmox_user, dest_pass, port=dest_port)
         except ProxmoxConnectionError as e:
