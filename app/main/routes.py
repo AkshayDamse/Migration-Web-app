@@ -38,6 +38,12 @@ except ImportError:
     ProxmoxConnectionError = None
     get_proxmox_vms = None
 
+# Import KVM client
+try:
+    from ..kvm.client import get_kvm_vms
+except ImportError:
+    get_kvm_vms = None
+
 # Import Proxmox SSH runner
 try:
     from ..ssh_runner import start_remote_migration, get_job_status, SSHRunnerError
@@ -696,14 +702,28 @@ def post_migration_check(job_id):
         flash("No destination connection details found.", "error")
         return redirect(url_for("main.migration_summary"))
     
-    # Get selected VMs (from migration module or all if not specified)
+    # Get selected VMs (from appropriate migration module based on destination)
     selected_serials = []
-    if migration_mod:
+    if dest_platform == 'proxmox' and migration_mod:
         try:
             migration_mod.load_config()
             selected_serials = migration_mod.sel if isinstance(migration_mod.sel, list) else []
         except Exception:
             selected_serials = []
+    elif dest_platform == 'kvm' and kvm_migration_mod:
+        try:
+            kvm_migration_mod.load_config()
+            selected_serials = kvm_migration_mod.sel if isinstance(kvm_migration_mod.sel, list) else []
+        except Exception:
+            selected_serials = []
+    else:
+        # Fallback to migration_mod for other platforms
+        if migration_mod:
+            try:
+                migration_mod.load_config()
+                selected_serials = migration_mod.sel if isinstance(migration_mod.sel, list) else []
+            except Exception:
+                selected_serials = []
     
     # Filter to only selected VMs (convert serials from 1-indexed to array indices)
     selected_source_vms = [source_vms[i - 1] for i in selected_serials if 1 <= i <= len(source_vms)]
@@ -721,7 +741,7 @@ def post_migration_check(job_id):
         except ProxmoxConnectionError as e:
             flash(f"Could not connect to Proxmox: {e}", "error")
             return redirect(url_for("main.migration_summary"))
-    elif dest_platform == 'kvm':
+    elif dest_platform == 'kvm' and get_kvm_vms:
         try:
             # KVM uses SSH port for virsh commands
             destination_vms = get_kvm_vms(dest_host, dest_user, dest_pass, port=int(dest_port))
@@ -792,129 +812,6 @@ def post_migration_check(job_id):
     
     return render_template('post_migration_check.html', vm_comparisons=vm_comparisons, job_id=job_id)
 
-
-def get_kvm_vms(host: str, username: str, password: str, port: int = 22) -> list:
-    """
-    Get list of VMs from KVM host using SSH and virsh commands.
-    
-    Args:
-        host: KVM host IP or hostname
-        username: SSH username
-        password: SSH password
-        port: SSH port (default 22)
-    
-    Returns:
-        list: List of VM dictionaries with details
-        
-    Raises:
-        Exception on failures
-    """
-    import paramiko
-    
-    try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(hostname=host, port=int(port), username=username, password=password, timeout=15)
-    except Exception as e:
-        raise Exception(f'Could not SSH to KVM host {host}: {e}')
-    
-    def run(cmd):
-        stdin, stdout, stderr = client.exec_command(cmd)
-        return stdout.read().decode().strip(), stderr.read().decode().strip()
-    
-    try:
-        # Get list of all VMs
-        out, err = run("virsh list --all --name")
-        if err:
-            raise Exception(f'virsh list failed: {err}')
-        
-        vm_names = [name for name in out.split('\n') if name.strip()]
-        
-        vms = []
-        for vm_name in vm_names:
-            vm_name = vm_name.strip()
-            if not vm_name:
-                continue
-            
-            try:
-                # Get VM info
-                out, err = run(f"virsh dominfo {vm_name}")
-                if err:
-                    print(f"Warning: Could not get info for VM {vm_name}: {err}")
-                    continue
-                
-                vm_info = {}
-                for line in out.split('\n'):
-                    if ':' in line:
-                        key, value = line.split(':', 1)
-                        vm_info[key.strip().lower()] = value.strip()
-                
-                # Get CPU count
-                cpu = int(vm_info.get('vcpu', 0))
-                
-                # Get memory (convert to MB)
-                max_memory = vm_info.get('max memory', '0 KiB')
-                if 'KiB' in max_memory:
-                    memory_kb = int(max_memory.replace(' KiB', ''))
-                    memory_mb = memory_kb // 1024
-                elif 'MiB' in max_memory:
-                    memory_mb = int(max_memory.replace(' MiB', ''))
-                else:
-                    memory_mb = 0
-                
-                # Get disk info
-                out, err = run(f"virsh domblklist {vm_name}")
-                storage_gb = 0.0
-                if not err:
-                    lines = out.split('\n')
-                    for line in lines[2:]:  # Skip header
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            disk_path = parts[1]
-                            if disk_path != '-':
-                                # Get disk size
-                                size_out, size_err = run(f"qemu-img info {disk_path} | grep 'virtual size'")
-                                if not size_err and size_out:
-                                    # Parse "virtual size: 10G (10737418240 bytes)"
-                                    size_str = size_out.split(':')[1].split('(')[0].strip()
-                                    if 'G' in size_str:
-                                        storage_gb += float(size_str.replace('G', ''))
-                                    elif 'M' in size_str:
-                                        storage_gb += float(size_str.replace('M', '')) / 1024
-                
-                # Get network interfaces
-                out, err = run(f"virsh domiflist {vm_name}")
-                network = []
-                if not err:
-                    lines = out.split('\n')
-                    for line in lines[2:]:  # Skip header
-                        parts = line.split()
-                        if len(parts) >= 3:
-                            network.append(parts[2])  # Interface name
-                
-                # SCSI controller - KVM typically uses virtio or IDE
-                scsi_controller = 'virtio'  # Default for KVM
-                
-                vms.append({
-                    'name': vm_name,
-                    'cpu': cpu,
-                    'memory': memory_mb,
-                    'total_storage_gb': storage_gb,
-                    'network': network,
-                    'scsi_controller': scsi_controller
-                })
-                
-            except Exception as e:
-                print(f"Warning: Error processing VM {vm_name}: {e}")
-                continue
-        
-        client.close()
-        return vms
-        
-    except Exception as e:
-        client.close()
-        raise Exception(f'Failed to get KVM VMs: {e}')
-    
 
 @bp.route('/download-log/<job_id>', methods=['GET'])
 def download_log(job_id):
