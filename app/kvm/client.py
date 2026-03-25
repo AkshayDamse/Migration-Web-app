@@ -28,17 +28,14 @@ def get_kvm_vms(host: str, username: str, password: str, port: int = 22) -> list
         raise Exception(f'Could not SSH to KVM host {host}: {e}')
     
     def run(cmd):
-        full_cmd = f'sudo -S {cmd}'
-        stdin, stdout, stderr = client.exec_command(full_cmd)
-        stdin.write(password + '\n')
-        stdin.flush()
+        stdin, stdout, stderr = client.exec_command(cmd)
         out = stdout.read().decode().strip()
         err = stderr.read().decode().strip()
         return out, err
     
     try:
         # Get list of all VMs
-        out, err = run("virsh list --all --name")
+        out, err = run("virsh -c qemu://system list --all --name")
         if err:
             raise Exception(f'virsh list failed: {err}')
         
@@ -52,7 +49,7 @@ def get_kvm_vms(host: str, username: str, password: str, port: int = 22) -> list
             
             try:
                 # Get VM info
-                out, err = run(f"virsh dominfo {vm_name}")
+                out, err = run(f"virsh -c qemu://system dominfo {vm_name}")
                 if err:
                     print(f"Warning: Could not get info for VM {vm_name}: {err}")
                     continue
@@ -64,7 +61,7 @@ def get_kvm_vms(host: str, username: str, password: str, port: int = 22) -> list
                         vm_info[key.strip().lower()] = value.strip()
                 
                 # Get CPU count
-                cpu = int(vm_info.get('vcpu', 0))
+                cpu = int(vm_info.get('cpu(s)', 0))
                 
                 # Get memory (convert to MB)
                 max_memory = vm_info.get('max memory', '0 KiB')
@@ -77,7 +74,7 @@ def get_kvm_vms(host: str, username: str, password: str, port: int = 22) -> list
                     memory_mb = 0
                 
                 # Get disk info
-                out, err = run(f"virsh domblklist {vm_name}")
+                out, err = run(f"virsh -c qemu://system domblklist {vm_name}")
                 storage_gb = 0.0
                 if not err:
                     lines = out.split('\n')
@@ -97,7 +94,7 @@ def get_kvm_vms(host: str, username: str, password: str, port: int = 22) -> list
                                         storage_gb += float(size_str.replace('M', '')) / 1024
                 
                 # Get network interfaces
-                out, err = run(f"virsh domiflist {vm_name}")
+                out, err = run(f"virsh -c qemu://system domiflist {vm_name}")
                 network = []
                 if not err:
                     lines = out.split('\n')
